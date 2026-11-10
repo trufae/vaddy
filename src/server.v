@@ -170,7 +170,7 @@ fn (mut s Server) respond_options(mut c Connection, code int, reason string, bod
 	length := if code in [204, 304] || (keepalive && c.request.method == 'HEAD' && body == '') { '' } else { 'Content-Length: ${body.len}\r\n' }
 	if code in [204, 304] { response_body = '' }
 	header.write_string('HTTP/1.1 ${code} ${reason}\r\n${length}${content}${connection}${extra}\r\n')
-	edit_header_buffer(mut header, c.response_headers, c.header_values) or {
+	response_header_buffer(mut header, c.response_headers, c.header_values, code, true) or {
 		// Never emit malformed or oversized configured headers, including on errors.
 		header.clear()
 		c.log_status = 500
@@ -319,11 +319,26 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		}
 		s.owners[c.backend] = c.fd
 	}
-	host := if route.upstream.starts_with('https://') { route.upstream.trim_string_left('https://') } else { '' }
-	c.to_backend.request_header(m, rewrite_uri(m.uri, route.rewrite), c.ip, c.tls != unsafe { nil }, host)
 	mut edits := site.request_headers.clone()
 	edits << route.request_headers
-	edit_header_buffer(mut c.to_backend, edits, c.header_values)!
+	mut upstream_request := m
+	upstream_request.fields = m.fields.clone()
+	apply_header_edits(mut upstream_request.fields, edits.filter(!it.proxy), c.header_values, 0, false)!
+	hosts := upstream_request.fields.filter(it.lower == 'host')
+	upstream_request.host = if hosts.len > 0 { hosts.last().value } else { '' }
+	upstream_request.fields = upstream_request.fields.filter(it.lower != 'host')
+	fallback_host := route.upstream.trim_string_left('https://')
+	host := if route.upstream.starts_with('https://') || upstream_request.host == '' { fallback_host } else { upstream_request.host }
+	upstream_request.fields << Field{'Host', 'host', host}
+	c.to_backend.request_header(upstream_request, rewrite_uri(m.uri, route.rewrite), c.ip, c.tls != unsafe { nil }, '')
+	edit_header_buffer(mut c.to_backend, edits.filter(it.proxy), c.header_values)!
+	// Host is represented separately by Go's request type: an append replaces it.
+	mut wire_fields := buffer_header_fields(c.to_backend)
+	wire_hosts := wire_fields.filter(it.lower == 'host')
+	wire_fields = wire_fields.filter(it.lower != 'host')
+	wire_fields << Field{'Host', 'host', if wire_hosts.len > 0 && wire_hosts.last().value != '' { wire_hosts.last().value } else { fallback_host }}
+	write_header_fields(mut c.to_backend, wire_fields)!
+
 	c.close_after = m.close || s.draining || c.requests >= s.opts.max_keepalive_requests - 1
 	if m.expect && !m.frame.done { c.to_client.add('HTTP/1.1 100 Continue\r\n\r\n'.bytes()) }
 	return true
@@ -349,7 +364,7 @@ fn (mut s Server) consume_request(mut c Connection) ! {
 fn (mut s Server) write_response_header(mut c Connection, m Message, close bool) ! {
 	mut header := Buffer{}
 	header.response_header(m, [], close)
-	edit_header_buffer(mut header, c.response_headers, c.header_values)!
+	response_header_buffer(mut header, c.response_headers, c.header_values, m.status, false)!
 	if c.to_client.room() < header.len() { return error('response header output exceeds buffer') }
 	c.to_client.add(header.bytes())
 }

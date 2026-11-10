@@ -180,19 +180,25 @@ example.org {
 }
 ```
 
-A plain name replaces all existing values; `+Name` appends, `-Name` removes, and
-`?Name` supplies a value only if absent. Names are case-insensitive. Site edits
-run before route/proxy edits; edits within each list run in configuration order.
-Request edits apply after automatic forwarding headers and HTTPS Host selection,
-so explicit `header_up` settings can override them. Response edits also apply to
-local redirects and errors when the site/route is known.
+A plain name sets a field; `+Name` appends, `-Name` removes (including `*`
+wildcards), and response-only `?Name` supplies a default when absent. Use
+`>Name` or a block's `defer` to overwrite the eventual upstream value. Deletion
+also defers the whole block. Immediate response fields precede upstream fields;
+deferred handlers run in reverse middleware order. Within one block Caddy applies
+add, set, delete, then replacement operations, regardless of their textual order.
 
-Values support `{uri}`, `{host}`, `{hostport}`, `{scheme}`, `{remote_host}` and
-`{upstream_hostport}`. Substitution is a single pass; user-supplied values are
-never expanded again. Regex replacements, header-name wildcards, matcher tokens
-on header directives and deferred-header syntax are not supported. Use `handle`
-for path-specific edits. Framing/connection headers cannot be edited, and request
-`Host` can only be replaced. Output headers are limited to 16 KiB and 128 fields.
+`header` and `request_header` accept inline path or named path matchers. Response
+blocks can include `match { status 2xx }` or `match { header Content-Type text/* }`
+(write block entries on separate lines). Request edits run before generated
+forwarding fields; proxy `header_up` runs afterward. Request Host can be set,
+appended or removed; an absent Host uses the upstream address.
+
+Values and field names support request placeholders, including `{header.Name}`,
+`{query.name}`, `{method}`, `{path}`, `{uri}`, `{host}`, `{hostport}`, `{scheme}`,
+`{remote_host}` and `{upstream_hostport}`. Substitution is a single pass. Unknown
+placeholders remain literal. Framing/connection headers and trailers remain
+protected; wildcard deletion preserves fields needed to frame the message.
+Output headers are limited to 16 KiB and 128 fields.
 
 ## Custom redirects
 

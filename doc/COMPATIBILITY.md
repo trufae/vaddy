@@ -45,15 +45,16 @@ tracking them here does not imply that removing those restrictions is desirable.
 
 - [ ] **CADDY-003 — Header execution semantics:** match Caddy's immediate and
   deferred operations, including `defer`/`>` syntax and interactions between site,
-  route and proxy edits. Vaddy currently applies site edits before route/proxy edits,
-  which can produce different results when they modify the same header.
+  route and proxy edits. Implemented and verified for supported routes in CADDY-052;
+  nested routing and informational-response edge cases still need coverage.
 - [ ] **CADDY-004 — Header transformations:** support regex value replacements
   and wildcard header names.
 - [ ] **CADDY-005 — Conditional headers:** support matcher tokens directly on
-  header directives and response conditions in header blocks.
+  header directives and response conditions in header blocks. Path matchers and
+  status/header response conditions are implemented; broader request matcher types
+  depend on CADDY-026.
 - [ ] **CADDY-006 — Header restrictions and trailers:** account for differences
-  caused by Vaddy's protected framing/connection headers, replacement-only request
-  `Host`, and lack of trailer editing. Preserve valid HTTP framing when extending
+  caused by Vaddy's protected framing/connection headers, lack of trailer editing. Request `Host` set/append/delete now match Caddy. Preserve valid HTTP framing when extending
   this behavior.
 
 ### Redirects
@@ -193,3 +194,9 @@ tracking them here does not imply that removing those restrictions is desirable.
   `make compatibility` compares 15 configurations against Caddy
   `8a6ab2b7bb3c6b83ed8d8031d6457375629858d8` (2026-11-10). Unknown target
   placeholders are preserved. The broader placeholder gap remains CADDY-030.
+
+- [x] **CADDY-052 — Header middleware and conditions (parts of CADDY-003–006):**
+  immediate/deferred ordering, `defer`/`>`, defaults, wildcard deletion, operation
+  phases, path matchers, response status/header conditions, and request Host edits.
+  Compared with Caddy in 22 cases. Framing fields remain protected, including when
+  deleting `*`; this deliberate restriction is not claimed as Caddy equivalence.

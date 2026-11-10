@@ -178,7 +178,8 @@ fn parse_proxy(d Directive, mut route Route) ! {
 	mut transport_seen := false
 	for child in d.children {
 		if child.args.len > 0 && child.args[0] in ['header_up', 'header_down'] {
-			edit := parse_header_edit(child.args[1..], child.children.len > 0, child.args[0] == 'header_up')!
+			base := parse_header_edit(child.args[1..], child.children.len > 0, true)!
+			edit := HeaderEdit{...base, proxy: true, group: 'proxy'}
 			if child.args[0] == 'header_up' { route.request_headers << edit } else { route.response_headers << edit }
 			continue
 		}
@@ -352,8 +353,12 @@ fn parse_config(input string) !Config {
 			}
 		}
 		if site.routes.len == 0 { return error('site needs reverse_proxy, handle or redir') }
+		resolve_header_matchers(mut site.response_headers, site.matchers)!
+		resolve_header_matchers(mut site.request_headers, site.matchers)!
 		mut fallbacks := 0
 		for mut route in site.routes {
+			resolve_header_matchers(mut route.response_headers, site.matchers)!
+			resolve_header_matchers(mut route.request_headers, site.matchers)!
 			if route.matcher != '' {
 				if route.matcher !in site.matchers {
 					return error('undefined matcher ${route.matcher}')
@@ -410,7 +415,7 @@ fn (cfg Config) site_index(host string) int {
 	return -1
 }
 
-fn (site Site) route_for(uri string) ?Route {
+fn normalized_path(uri string) ?string {
 	unescaped := urllib.path_unescape(uri.all_before('?')) or { return none }
 	path := unescaped.to_lower()
 	// Most paths are already normalized; avoid splitting and rebuilding those.
@@ -427,6 +432,11 @@ fn (site Site) route_for(uri string) ?Route {
 		clean := '/' + segments.join('/')
 		matched_path = if path.ends_with('/') && clean != '/' { clean + '/' } else { clean }
 	}
+	return matched_path
+}
+
+fn (site Site) route_for(uri string) ?Route {
+	matched_path := normalized_path(uri) or { return none }
 	for route in site.routes {
 		if route.patterns.len == 0 { return route }
 		for pattern in route.patterns {

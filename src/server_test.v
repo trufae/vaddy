@@ -383,7 +383,7 @@ fn test_header_edits_on_proxy_keepalive_and_local_response() ! {
 }
 
 fn test_header_edit_validation_and_output_limits() ! {
-	for directive in ['header Content-Length 5', 'header +Connection close', 'request_header -Host', 'request_header +Host evil', 'header Bad:Name x', 'header X-Test one two', 'header X-Test "bad\rvalue"'] {
+	for directive in ['header Content-Length 5', 'header +Connection close', 'request_header ?X-Foo bar', 'header Bad:Name x', 'header X-Test one two', 'header X-Test "bad\rvalue"'] {
 		if _ := parse_config('http://localhost {\n ${directive}\n reverse_proxy localhost:8001\n}') { assert false, directive }
 	}
 	mut b := Buffer{}
@@ -402,7 +402,7 @@ fn edit_headers_for_test(mut b Buffer, edits []HeaderEdit, values HeaderValues) 
 fn test_custom_redirects_precedence_and_head() ! {
 	for method in ['GET', 'HEAD', 'POST'] {
 		mut h := harness()!
-		h.s.cfg = parse_config('http://localhost {\n header X-Site yes\n reverse_proxy localhost:8001\n @old path /old /old/*\n redir @old https://new.example{uri} permanent\n handle /local {\n header X-Local yes\n redir * /target 307\n }\n}')!
+		h.s.cfg = parse_config('http://localhost {\n header >X-Site yes\n reverse_proxy localhost:8001\n @old path /old /old/*\n redir @old https://new.example{uri} permanent\n handle /local {\n header X-Local yes\n redir * /target 307\n }\n}')!
 		send_text(h.client, '${method} /old?q=1 HTTP/1.1\r\nHost: localhost\r\n\r\n')
 		h.pump()!
 		response := receive(h.client)

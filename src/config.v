@@ -77,7 +77,7 @@ fn tokenize(input string) ![]Token {
 			mut value := []u8{}
 			for i < input.len && input[i] != `"` {
 				if input[i] == `\n` { return error('line ${line}: newline in quoted token') }
-				if input[i] == `\\` && i + 1 < input.len { i++ }
+				if input[i] == `\\` && i + 1 < input.len && input[i + 1] == `"` { i++ }
 				value << input[i]
 				i++
 			}

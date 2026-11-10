@@ -17,13 +17,14 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | Streaming | Bounded upload/download queues, backpressure, SSE, WebSocket upgrades |
 | TLS | OpenSSL TLS 1.2+, automatic public/internal certificates, live context replacement |
 | Access logs | Per-site `log`, JSON lines to stderr/stdout or an append-only file; request status, timing, bytes and completion |
-| CLI | `run`, `validate`, `version`, `--config`, `--adapter caddyfile` |
+| Reload | Transactional request-setting reloads through `vaddy reload` or POSIX SIGHUP; active requests keep their configuration; ports and certificate policies require restart |
+| CLI | `run`, `reload`, `validate`, `version`, `--config`, `--adapter caddyfile` |
 
 Not implemented: HTTP/2 or HTTP/3, dynamic DNS refresh, balancing,
 shared upstream connection pools, request retries, compression, file serving,
 imports/snippets/environment interpolation, arbitrary placeholders or matchers,
 JSON configuration, the admin API, and Caddy plugins. Upstream
 connections are reused per client while both sides permit it; failed requests
-are not replayed. Header removal applies to response headers, not trailer fields.
+are not replayed. Header edits apply to header fields, not trailer fields.
 Local IP-address certificate subjects are not supported; use DNS names such as
 `localhost` with `tls internal`.

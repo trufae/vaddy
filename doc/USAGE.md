@@ -35,13 +35,13 @@ sudo setcap cap_net_bind_service=+ep ./vaddy
 Stop the existing Caddy listener before starting Vaddy on the same ports. Your
 backend must be reachable at `localhost:8001`. The default `::` listener accepts
 both IPv6 and IPv4 on supported systems; use `--bind 0.0.0.0` for IPv4-only hosts.
-Upstream names are resolved at startup, preferring IPv4. A backend address change
-requires a restart.
+Upstream names are resolved at startup and configuration reload, preferring IPv4.
+Reload after a backend address change; periodic DNS refresh is not implemented.
 
 `./vaddy --help` lists port, worker, connection-limit, timeout, storage, and staging
 options. `SIGINT`/`SIGTERM` stop new accepts, drain active requests for up to ten
-seconds, then close remaining connections. Configuration changes require a
-restart; certificate updates do not.
+seconds, then close remaining connections. Request settings can be reloaded without a restart; see configuration reload
+below. Certificate updates are loaded automatically.
 
 ## Automatic HTTPS
 
@@ -155,7 +155,7 @@ localhost {
 The explicit CA file replaces the default trust roots for that route. Certificate
 verification cannot be disabled. A failed handshake returns 502 without sending
 the HTTP request to the backend. The header timeout also bounds upstream TLS
-handshakes. Trust-file changes take effect on restart.
+handshakes. Trust-file changes take effect on configuration reload or restart.
 
 ## Request and response headers
 
@@ -233,7 +233,7 @@ example.org {
 ```
 
 `output stdout` and `output stderr` are also supported. Parent directories must
-already exist and be writable. Files are opened in append mode at startup, with
+already exist and be writable. Files are opened in append mode at startup and configuration reload, with
 mode 0600 for new files on POSIX. Sites using the same destination share a writer;
 worker writes are serialized and flushed after each record. File rotation and
 Caddy's log filtering/custom encoders are not implemented.
@@ -249,3 +249,45 @@ that cannot be assigned to a site do not produce site access records.
 
 Headers, cookies and credentials are not recorded. URIs include query strings;
 avoid putting secrets in URLs. Operational messages still go to stderr separately.
+
+## Configuration reload
+
+Edit the Caddyfile, then use the same data directory as the running server:
+
+```sh
+./vaddy reload --config ./Caddyfile --data /var/lib/vaddy
+```
+
+This works on Linux, macOS and Windows, using a private request/result exchange
+in the data directory; it does not expose an admin network endpoint. Run it as a
+user with access to that directory. Include `--staging` when the running server
+uses staging storage. A successful command prints `Configuration reloaded`; a
+rejected configuration exits nonzero with the reason. Concurrent reload commands
+are rejected, and each request is tied to the running server instance.
+
+On POSIX, `kill -HUP PID` reloads the active configuration file and reports the
+result on stderr. After a successful CLI reload with a different `--config` path,
+that file becomes the source for subsequent SIGHUP reloads.
+
+Reloadable settings include routes, redirects, request/response headers, logging,
+HTTP-only sites, and HTTP/HTTPS backends (including trust roots and TLS server
+names). DNS addresses and trust files are refreshed, and log outputs are reopened.
+The candidate is parsed and all backend addresses, TLS trust contexts and log
+files are prepared before it replaces the active configuration. Failure leaves
+the old configuration serving. Creating/opening a candidate log file is a possible
+preparation side effect even if a later preparation step fails.
+
+Each request keeps its configuration until completion. Existing streams and
+WebSockets continue; the next request on a keep-alive client connection uses the
+new configuration. Old resources are released after their last request finishes.
+Idle backend connections are replaced on the next request after a reload, so new
+trust policies and resolved addresses take effect even if the URL is unchanged.
+
+Listener ports, bind address, worker/connection limits, timeout CLI options, HTTPS
+hostname lists/order and the shared certificate policy still require a restart.
+A reload rejects changes to configured listener ports or certificate policy.
+The running process's CLI port/staging overrides remain authoritative. Do not pass
+new startup options to `reload` expecting them to change the running process.
+
+Reload requests are checked once per second. The command waits up to 30 seconds;
+a timeout means the outcome is unknown, so inspect server logs before retrying.

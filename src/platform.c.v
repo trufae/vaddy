@@ -48,3 +48,5 @@ fn C.vaddy_replace(&char, &char) int
 fn C.vaddy_upstream_context(&char) voidptr
 fn C.vaddy_upstream_tls(voidptr, int, &char) voidptr
 fn C.vaddy_upstream_handshake(voidptr) int
+
+fn C.vaddy_take_reload() int

@@ -13,7 +13,9 @@ unsupported directives fail validation.
 | Feature | What you get |
 | --- | --- |
 | Automatic HTTPS | HTTP on **80**, HTTPS on **443**, ACME HTTP-01 and certificate renewal |
-| Routing | Path matchers, asset rewrites, query preservation and response-header removal |
+| Routing | Path matchers, rewrites, custom redirects and request/response header editing |
+| Backends | HTTP and verified HTTPS, custom CA roots and TLS server names |
+| Operations | JSON access logs and transactional configuration reloads |
 | Streaming | Bounded buffers, backpressure, SSE and WebSocket upgrades |
 | Concurrency | epoll/kqueue/Windows polling, optional workers and a global connection limit |
 | Certificates | Public ACME, a local development CA, manual certificates and live reload |
@@ -60,7 +62,7 @@ host, so no valid Raddy performance ranking is reported.
 
 ```sh
 make test          # HTTP, routing, streaming, TLS, workers and mock ACME
-make integration   # Loopback TCP/TLS integration tests
+make integration   # TCP/TLS, HTTPS backends, access logs and live reloads
 make compare       # Build ./caddy and ./raddy; compare all three servers
 make alpine        # Build/test Alpine x86-64; export dist/vaddy-alpine-x86_64
 ```

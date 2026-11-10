@@ -92,3 +92,10 @@ fn test_redirect_only_sites_and_invalid_redirects() ! {
 	}
 	if _ := parse_config('http://localhost {\n handle {\n redir /new\n reverse_proxy localhost:8001\n }\n}') { assert false }
 }
+
+fn test_quoted_windows_paths_preserve_backslashes() ! {
+	tokens := tokenize(r'header X-Path "C:\server\data"')!
+	assert tokens[2].text == r'C:\server\data'
+	escaped := tokenize(r'header X-Message "say \"hello\""')!
+	assert escaped[2].text == 'say "hello"'
+}

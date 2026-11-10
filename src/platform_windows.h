@@ -33,6 +33,7 @@ static void vaddy_signals(void) {
     SetConsoleCtrlHandler(vaddy_console_signal, TRUE);
 }
 static int vaddy_stopped(void) { return InterlockedCompareExchange(&vaddy_stopping, 0, 0) != 0; }
+static int vaddy_take_reload(void) { return 0; }
 static int vaddy_again(void) {
     int e = WSAGetLastError();
     return e == WSAEWOULDBLOCK || e == WSAEINTR || e == WSAEINPROGRESS;

@@ -27,7 +27,7 @@ To update Raddy later, run `git -C raddy pull --ff-only` before rebuilding.
 
 ```sh
 make test          # parser, framing, real socket-pair proxy I/O, TLS, mock ACME
-make integration   # real loopback TCP/TLS and verified HTTPS backends
+make integration   # TCP/TLS, verified HTTPS backends, concurrent logs and live reloads
 make bench         # optimized socket-pair request-path microbenchmark
 make bench-workers # separate-process TLS socket-pair comparison of 1/2 workers
 make compare       # build ./caddy and ./raddy; compare all three over TCP/TLS
@@ -111,3 +111,11 @@ Protocol references: [ACME RFC 8555](https://www.rfc-editor.org/rfc/rfc8555),
 `tests/upstream.py` verifies private-CA HTTPS backends, SNI/Host behavior,
 streaming and keep-alive with two workers. Untrusted, wrong-name and mismatched
 IP-address certificates must return 502. All certificates are generated locally.
+
+`tests/reload.py` exercises one and three workers: backend replacement, updated
+headers/redirects, keep-alive reuse, active streaming responses and WebSocket
+sessions across reloads, POSIX SIGHUP, repeated generations, and rollback for
+invalid syntax, inaccessible log destinations, missing trust roots and listener
+changes. The original integration suite also verifies concurrent JSON access logs.
+The V socket-pair suite checks header edit bounds, redirect ordering, per-request
+logs, interrupted responses and lifetime management of retired configurations.

@@ -91,6 +91,7 @@ fn (mut s Server) start_workers() ! {
 			control_fd: int(fds[0])
 			incoming:   incoming
 			pool:       s.pool
+			runtime_store: s.runtime_store
 			backends:   s.backends
 			access_logs: s.access_logs
 		}

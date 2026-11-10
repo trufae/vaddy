@@ -23,6 +23,8 @@ mut:
 @[heap]
 struct Connection {
 mut:
+	runtime &Runtime = unsafe { nil }
+	backend_generation i64
 	access_log &AccessLog = unsafe { nil }
 	access_logged bool
 	log_status int
@@ -70,6 +72,9 @@ mut:
 
 struct Server {
 mut:
+	runtime_store &RuntimeStore = unsafe { nil }
+	retired []&Runtime
+	run_id string
 	cfg           Config
 	opts          Options
 	queue         int
@@ -129,6 +134,7 @@ fn (mut s Server) close_backend(mut c Connection) {
 fn (mut s Server) close_client(mut c Connection) {
 	if c.fd < 0 { return }
 	s.log_access(mut c, false)
+	release_runtime(mut c)
 	s.close_backend(mut c)
 	s.watch(c.fd, 0) or {}
 	s.watches.delete(c.fd)
@@ -226,13 +232,17 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	c.log_started = c.started
 	c.bytes_written = 0
 	c.log_upstream = ''
-	c.site = s.cfg.site_index(m.host)
+	if s.runtime_store != unsafe { nil } { c.runtime = s.runtime_store.acquire() }
+	cfg := if c.runtime == unsafe { nil } { s.cfg } else { c.runtime.cfg }
+	backends := if c.runtime == unsafe { nil } { s.backends } else { c.runtime.backends }
+	logs := if c.runtime == unsafe { nil } { s.access_logs } else { c.runtime.logs }
+	c.site = cfg.site_index(m.host)
 	if c.site < 0 {
 		s.respond(mut c, 421, 'Misdirected Request', 'Unknown host\n', '')
 		return false
 	}
-	site := s.cfg.sites[c.site]
-	c.access_log = s.access_logs[site.log_output] or { unsafe { nil } }
+	site := cfg.sites[c.site]
+	c.access_log = logs[site.log_output] or { unsafe { nil } }
 	c.response_headers = site.response_headers.clone()
 	c.header_values = HeaderValues{uri: m.uri, host: m.host.all_before(':'), hostport: m.host, scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip}
 	if c.tls == unsafe { nil } {
@@ -255,7 +265,7 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 			return false
 		}
 		if !site.plain {
-			port := if s.cfg.https_port == 443 { '' } else { ':${s.cfg.https_port}' }
+			port := if cfg.https_port == 443 { '' } else { ':${cfg.https_port}' }
 			host := m.host.all_before(':').to_lower().trim_right('.')
 			s.respond(mut c, 308, 'Permanent Redirect', '', 'Location: https://${host}${port}${m.uri}\r\n')
 			return false
@@ -277,11 +287,12 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	}
 	c.log_upstream = route.upstream
 	c.header_values.upstream_hostport = route.upstream.trim_string_left('https://')
-	if c.backend >= 0 && (c.backend_name != route.backend_key() || C.vaddy_socket_alive(c.backend) == 0) {
+	generation := if c.runtime == unsafe { nil } { i64(0) } else { c.runtime.id }
+	if c.backend >= 0 && (c.backend_generation != generation || c.backend_name != route.backend_key() || C.vaddy_socket_alive(c.backend) == 0) {
 		s.close_backend(mut c)
 	}
 	if c.backend < 0 {
-		backend := s.backends[route.backend_key()] or { return error('unresolved upstream') }
+		backend := backends[route.backend_key()] or { return error('unresolved upstream') }
 		c.backend = C.vaddy_connect(backend.address)
 		if c.backend < 0 {
 			s.respond(mut c, 502, 'Bad Gateway', 'Bad Gateway\n', '')
@@ -290,6 +301,7 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		c.connecting = true
 		c.started = mono_ms()
 		c.backend_name = route.backend_key()
+		c.backend_generation = generation
 		if backend.ctx != unsafe { nil } {
 			c.backend_tls = C.vaddy_upstream_tls(backend.ctx, c.backend, &char(backend.name.str))
 			if c.backend_tls == unsafe { nil } { return error('cannot create upstream TLS session') }
@@ -401,6 +413,7 @@ fn (mut s Server) finish_request(mut c Connection) ! {
 	}
 	if c.response.close { s.close_backend(mut c) }
 	c.requests++
+	release_runtime(mut c)
 	c.have_request = false
 	c.access_log = unsafe { nil }
 	c.response_headers = []HeaderEdit{}
@@ -652,7 +665,13 @@ fn (mut s Server) tick() {
 	now := mono_ms()
 	if now - s.last_tick < 1000 { return }
 	s.last_tick = now
-	if !s.draining { s.reload_certificate() }
+	if !s.draining {
+		s.reload_certificate()
+		if s.runtime_store != unsafe { nil } && s.control_fd < 0 {
+			s.check_reload()
+			s.reap_runtimes()
+		}
+	}
 	for _, mut c in s.clients.clone() {
 		in_headers := c.handshake || (!c.have_request && c.request_buffer.len() > 0) || c.connecting || c.backend_handshake
 		if now - c.last_activity > i64(s.opts.idle_timeout) * 1000 || (in_headers && now - c.started > i64(s.opts.header_timeout) * 1000) || (s.draining && now - s.drain_started > 10000) {
@@ -670,10 +689,14 @@ fn run_server(cfg Config, opts Options) ! {
 	mut s := Server{ cfg: cfg, opts: opts, queue: C.vaddy_queue() }
 	if s.queue < 0 { return error('cannot create event queue') }
 	defer { C.vaddy_queue_close(s.queue) }
-	s.access_logs = prepare_access_logs(cfg)!
-	defer { close_access_logs(s.access_logs) }
-	s.backends = prepare_backends(cfg)!
-	defer { free_backends(s.backends) }
+	s.runtime_store = &RuntimeStore{}
+	s.runtime_store.current = prepare_runtime(cfg, 1, s.runtime_store.log_mutex)!
+	s.backends = s.runtime_store.current.backends
+	s.access_logs = s.runtime_store.current.logs
+	defer { s.close_runtimes() }
+	s.run_id = new_reload_id()!
+	atomic_write(os.join_path(opts.data, 'run.id'), s.run_id)!
+	defer { os.rm(os.join_path(opts.data, 'run.id')) or {} }
 	s.http_fd = C.vaddy_listen(&char(opts.bind.str), &char(cfg.http_port.str().str))
 	if s.http_fd < 0 {
 		return error('cannot listen on ${opts.bind}:${cfg.http_port} (check permissions and existing listeners)')

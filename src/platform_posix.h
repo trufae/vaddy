@@ -16,19 +16,28 @@
 #endif
 
 static volatile sig_atomic_t vaddy_stopping;
+static volatile sig_atomic_t vaddy_reload_requested;
 static void vaddy_private_files(void) { umask(0077); }
 static int vaddy_socket_alive(int fd) {
     char byte; int n = (int)recv(fd, &byte, 1, MSG_PEEK);
     return n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK);
 }
-static void vaddy_signal(int sig) { (void)sig; vaddy_stopping = 1; }
+static void vaddy_signal(int sig) { if (sig == SIGHUP) vaddy_reload_requested = 1; else vaddy_stopping = 1; }
 static void vaddy_signals(void) {
     struct sigaction sa = {0}; sa.sa_handler = vaddy_signal;
     sigemptyset(&sa.sa_mask);
-    sigaction(SIGINT, &sa, NULL); sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL); sigaction(SIGTERM, &sa, NULL); sigaction(SIGHUP, &sa, NULL);
     signal(SIGPIPE, SIG_IGN);
 }
 static int vaddy_stopped(void) { return vaddy_stopping; }
+static int vaddy_take_reload(void) {
+    sigset_t block, previous;
+    sigemptyset(&block); sigaddset(&block, SIGHUP);
+    sigprocmask(SIG_BLOCK, &block, &previous);
+    int requested = vaddy_reload_requested; vaddy_reload_requested = 0;
+    sigprocmask(SIG_SETMASK, &previous, NULL);
+    return requested;
+}
 static int vaddy_nonblock(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0 || fcntl(fd, F_SETFD, FD_CLOEXEC) < 0) return -1;

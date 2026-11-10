@@ -3,7 +3,7 @@ module main
 import os
 
 const help_text = "vaddy 0.1.0 — streaming reverse proxy with automatic HTTPS
-Usage: vaddy [run|validate|version] [options]
+Usage: vaddy [run|reload|validate|version] [options]
   --config FILE          Caddyfile (default: ./Caddyfile)
   --adapter caddyfile     Accepted for Caddy CLI compatibility
   --data DIR             Certificate/account storage (default: XDG data/vaddy)
@@ -20,6 +20,8 @@ Usage: vaddy [run|validate|version] [options]
 Public HTTPS uses ACME HTTP-01. DNS must point to this server and public
 TCP ports 80 and 443 must reach it. Starting an ACME-enabled configuration
 registers an account agreeing to the configured CA's terms of service.
+Use reload with the same --data directory to replace request settings live.
+On POSIX, SIGHUP reloads the active config file.
 SIGTERM/SIGINT stop accepts and drain active requests for up to 10 seconds."
 
 fn cli() ! {
@@ -34,7 +36,7 @@ fn cli() ! {
 		println('vaddy 0.1.0')
 		return
 	}
-	if command !in ['run', 'validate'] { return error('unknown command ${command}; use --help') }
+	if command !in ['run', 'reload', 'validate'] { return error('unknown command ${command}; use --help') }
 	for i < os.args.len {
 		arg := os.args[i]
 		if arg in ['--help', '-h'] {
@@ -68,12 +70,7 @@ fn cli() ! {
 		}
 		i += 2
 	}
-	mut cfg := parse_config(os.read_file(opts.config)!)!
-	if opts.http_port > 0 { cfg.http_port = opts.http_port }
-	if opts.https_port > 0 { cfg.https_port = opts.https_port }
-	if cfg.http_port == cfg.https_port { return error('HTTP and HTTPS ports must differ') }
-	if opts.staging { cfg.acme_ca = 'https://acme-staging-v02.api.letsencrypt.org/directory' }
-	acme_url(cfg.acme_ca)!
+	cfg := load_config(os.read_file(opts.config)!, opts)!
 	if command == 'validate' {
 		println('Valid configuration: ${cfg.sites.len} site(s), HTTP ${cfg.http_port}, HTTPS ${cfg.https_port}')
 		return
@@ -88,6 +85,10 @@ fn cli() ! {
 	}
 	if opts.staging { opts.data = os.join_path(opts.data, 'staging') }
 	opts.data = os.abs_path(opts.data)
+	if command == 'reload' {
+		request_reload(opts)!
+		return
+	}
 	C.vaddy_private_files()
 	os.mkdir_all(opts.data, mode: 0o700)!
 	os.chmod(opts.data, 0o700)!

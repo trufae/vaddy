@@ -11,6 +11,7 @@ mut:
 	mutex &sync.Mutex = sync.new_mutex()
 	file os.File
 	owned bool
+	shared_mutex bool
 }
 
 struct AccessRecord {
@@ -67,7 +68,7 @@ fn close_access_logs(logs map[string]&AccessLog) {
 	for _, entry in logs {
 		mut logger := unsafe { entry }
 		if logger.owned { logger.file.close() }
-		logger.mutex.destroy()
+		if !logger.shared_mutex { logger.mutex.destroy() }
 	}
 }
 
@@ -82,4 +83,13 @@ fn (mut s Server) log_access(mut c Connection, complete bool) {
 	defer { logger.mutex.unlock() }
 	logger.file.writeln(line) or { eprintln('vaddy: access log write failed: ${err}') }
 	logger.file.flush()
+}
+
+fn share_log_mutex(logs map[string]&AccessLog, mutex &sync.Mutex) {
+	for _, entry in logs {
+		mut logger := unsafe { entry }
+		logger.mutex.destroy()
+		logger.mutex = mutex
+		logger.shared_mutex = true
+	}
 }

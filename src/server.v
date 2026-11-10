@@ -2,7 +2,6 @@ module main
 
 import os
 import time
-import net.urllib
 import sync.stdatomic
 
 struct Options {
@@ -27,6 +26,13 @@ mut:
 	fd              int
 	counted         bool
 	backend         int = -1
+	backend_tls     voidptr
+	backend_handshake bool
+	backend_handshake_want int = 2
+	backend_read_want int = 1
+	backend_write_want int = 2
+	backend_stop_write bool
+	backend_write_len int
 	backend_name    string
 	connecting      bool
 	ip              string
@@ -72,7 +78,7 @@ mut:
 	clients       map[int]&Connection
 	owners        map[int]int
 	watches       map[int]int
-	addresses     map[string]voidptr
+	backends      map[string]Backend
 	last_tick     i64
 	accept_retry  i64
 	draining      bool
@@ -98,6 +104,13 @@ fn (mut s Server) close_backend(mut c Connection) {
 	s.watch(c.backend, 0) or {}
 	s.watches.delete(c.backend)
 	s.owners.delete(c.backend)
+	if c.backend_tls != unsafe { nil } { C.vaddy_tls_free(c.backend_tls) }
+	c.backend_tls = unsafe { nil }
+	c.backend_handshake = false
+	c.backend_write_len = 0
+	c.backend_stop_write = false
+	c.backend_read_want = 1
+	c.backend_write_want = 2
 	C.vaddy_close(c.backend)
 	c.backend = -1
 	c.connecting = false
@@ -229,21 +242,29 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		s.respond(mut c, 404, 'Not Found', 'Not Found\n', '')
 		return false
 	}
-	if c.backend >= 0 && (c.backend_name != route.upstream || C.vaddy_socket_alive(c.backend) == 0) {
+	if c.backend >= 0 && (c.backend_name != route.backend_key() || C.vaddy_socket_alive(c.backend) == 0) {
 		s.close_backend(mut c)
 	}
 	if c.backend < 0 {
-		c.backend = C.vaddy_connect(s.addresses[route.upstream] or { return error('unresolved upstream') })
+		backend := s.backends[route.backend_key()] or { return error('unresolved upstream') }
+		c.backend = C.vaddy_connect(backend.address)
 		if c.backend < 0 {
 			s.respond(mut c, 502, 'Bad Gateway', 'Bad Gateway\n', '')
 			return false
 		}
 		c.connecting = true
 		c.started = mono_ms()
-		c.backend_name = route.upstream
+		c.backend_name = route.backend_key()
+		if backend.ctx != unsafe { nil } {
+			c.backend_tls = C.vaddy_upstream_tls(backend.ctx, c.backend, &char(backend.name.str))
+			if c.backend_tls == unsafe { nil } { return error('cannot create upstream TLS session') }
+			c.backend_handshake = true
+			c.backend_handshake_want = 2
+		}
 		s.owners[c.backend] = c.fd
 	}
-	c.to_backend.request_header(m, rewrite_uri(m.uri, route.rewrite), c.ip, c.tls != unsafe { nil })
+	host := if route.upstream.starts_with('https://') { route.upstream.trim_string_left('https://') } else { '' }
+	c.to_backend.request_header(m, rewrite_uri(m.uri, route.rewrite), c.ip, c.tls != unsafe { nil }, host)
 	c.close_after = m.close || s.draining || c.requests >= s.opts.max_keepalive_requests - 1
 	if m.expect && !m.frame.done { c.to_client.add('HTTP/1.1 100 Continue\r\n\r\n'.bytes()) }
 	return true
@@ -251,7 +272,7 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 
 fn (mut s Server) consume_request(mut c Connection) ! {
 	if !c.have_request && !s.begin_request(mut c)! { return }
-	if c.local || c.request.frame.done || c.request_buffer.len() == 0 { return }
+	if c.local || c.backend_stop_write || c.request.frame.done || c.request_buffer.len() == 0 { return }
 	data := c.request_buffer.bytes()
 	limit := if data.len < c.to_backend.room() { data.len } else { c.to_backend.room() }
 	n := c.request.frame.consume(data[..limit])!
@@ -284,7 +305,9 @@ fn (mut s Server) consume_response(mut c Connection) ! {
 		c.have_response = true
 		if !c.tunnel && (!c.request.frame.done || c.to_backend.len() > 0) {
 			c.close_after = true
-			c.to_backend.clear()
+			c.backend_stop_write = true
+			// Retain plaintext while OpenSSL has an outstanding write retry.
+			if c.backend_write_len == 0 { c.to_backend.clear() }
 		}
 		if m.frame.kind == .eof { c.close_after = true }
 		c.response = m
@@ -356,12 +379,23 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		if C.vaddy_connected(c.backend) != 0 { return error('upstream connect failed') }
 		c.connecting = false
 	}
+	if c.backend_handshake && !c.connecting {
+		result := C.vaddy_upstream_handshake(c.backend_tls)
+		if result == 1 {
+			c.backend_handshake = false
+			c.last_activity = mono_ms()
+		} else {
+			err := C.vaddy_tls_error(c.backend_tls, result)
+			if err !in [2, 3] { return error('upstream TLS verification or handshake failed') }
+			c.backend_handshake_want = if err == 2 { 1 } else { 2 }
+		}
+	}
 	mut scratch := [16384]u8{}
 	// Drain each ready input until EAGAIN, then wait for another readiness event.
 	// OpenSSL may have records buffered even when the kernel socket is no longer
 	// readable, so those records must also be allowed to drive the client read.
 	mut client_readable := event_fd == c.fd || (c.tls != unsafe { nil } && C.vaddy_tls_has_pending(c.tls) != 0)
-	mut backend_readable := event_fd == c.backend
+	mut backend_readable := event_fd == c.backend || (c.backend_tls != unsafe { nil } && C.vaddy_tls_has_pending(c.backend_tls) != 0)
 	for _ in 0 .. 8 {
 		mut progress := false
 		if c.to_client.len() > 0 {
@@ -395,25 +429,53 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		}
 		s.finish_request(mut c)!
 		if c.dead { return }
-		if !c.local && c.backend >= 0 && !c.connecting && c.to_backend.len() > 0 {
+		if !c.local && c.backend >= 0 && !c.connecting && !c.backend_handshake && !c.backend_stop_write && c.to_backend.len() > 0 {
 			data := c.to_backend.bytes()
-			n := int(C.vaddy_send(c.backend, data.data, uint(data.len), 0))
-			if n < 0 && C.vaddy_again() == 0 { return error('upstream write failed') }
+			mut n := 0
+			if c.backend_tls != unsafe { nil } {
+				if c.backend_write_len == 0 { c.backend_write_len = data.len }
+				n = C.vaddy_tls_write(c.backend_tls, data.data, c.backend_write_len)
+				if n <= 0 {
+					err := C.vaddy_tls_error(c.backend_tls, n)
+					if err !in [2, 3] { return error('upstream TLS write failed') }
+					c.backend_write_want = if err == 2 { 1 } else { 2 }
+				} else {
+					c.backend_write_len = 0
+					c.backend_write_want = 2
+				}
+			} else {
+				n = int(C.vaddy_send(c.backend, data.data, uint(data.len), 0))
+				if n < 0 && C.vaddy_again() == 0 { return error('upstream write failed') }
+			}
 			if n > 0 {
 				c.to_backend.skip(n)
 				progress = true
 			}
 		}
-		if backend_readable && !c.local && c.have_request && c.backend >= 0 && !c.connecting && !c.response.frame.done && c.response_buffer.room() > 0 && c.to_client.room() >= 16384 {
+		if backend_readable && !c.local && c.have_request && c.backend >= 0 && !c.connecting && !c.backend_handshake && !(c.backend_write_len > 0 && c.backend_write_want == 1) && !c.response.frame.done && c.response_buffer.room() > 0 && c.to_client.room() >= 16384 {
 			limit := if c.response_buffer.room() < scratch.len {
 				c.response_buffer.room()
 			} else {
 				scratch.len
 			}
-			n := int(C.vaddy_recv(c.backend, &scratch[0], uint(limit), 0))
-			if n < 0 { backend_readable = false }
-			if n < 0 && C.vaddy_again() == 0 { return error('upstream read failed') }
-			if n == 0 { s.backend_eof(mut c)! }
+			mut n := 0
+			if c.backend_tls != unsafe { nil } {
+				n = C.vaddy_tls_read(c.backend_tls, &scratch[0], limit)
+				if n <= 0 {
+					err := C.vaddy_tls_error(c.backend_tls, n)
+					backend_readable = false
+					if err == 6 {
+						s.backend_eof(mut c)!
+					} else if err in [2, 3] {
+						c.backend_read_want = if err == 2 { 1 } else { 2 }
+					} else { return error('upstream TLS read failed') }
+				} else { c.backend_read_want = 1 }
+			} else {
+				n = int(C.vaddy_recv(c.backend, &scratch[0], uint(limit), 0))
+				if n < 0 { backend_readable = false }
+				if n < 0 && C.vaddy_again() == 0 { return error('upstream read failed') }
+				if n == 0 { s.backend_eof(mut c)! }
+			}
 			if n > 0 {
 				c.response_buffer.add(scratch[..n])
 				progress = true
@@ -479,10 +541,12 @@ fn (mut s Server) update_interests(mut c Connection) ! {
 		mut back := 0
 		if c.connecting {
 			back = 2
+		} else if c.backend_handshake {
+			back = c.backend_handshake_want
 		} else {
-			if c.to_backend.len() > 0 { back |= 2 }
+			if !c.backend_stop_write && c.to_backend.len() > 0 { back |= c.backend_write_want }
 			if c.have_request && !c.response.frame.done && c.response_buffer.room() > 0 && c.to_client.room() >= 16384 {
-				back |= 1
+				back |= c.backend_read_want
 			}
 		}
 		s.watch(c.backend, back)!
@@ -535,7 +599,7 @@ fn (mut s Server) tick() {
 	s.last_tick = now
 	if !s.draining { s.reload_certificate() }
 	for _, mut c in s.clients.clone() {
-		in_headers := c.handshake || (!c.have_request && c.request_buffer.len() > 0) || c.connecting
+		in_headers := c.handshake || (!c.have_request && c.request_buffer.len() > 0) || c.connecting || c.backend_handshake
 		if now - c.last_activity > i64(s.opts.idle_timeout) * 1000 || (in_headers && now - c.started > i64(s.opts.header_timeout) * 1000) || (s.draining && now - s.drain_started > 10000) {
 			s.close_client(mut c)
 		}
@@ -551,20 +615,8 @@ fn run_server(cfg Config, opts Options) ! {
 	mut s := Server{ cfg: cfg, opts: opts, queue: C.vaddy_queue() }
 	if s.queue < 0 { return error('cannot create event queue') }
 	defer { C.vaddy_queue_close(s.queue) }
-	for site in cfg.sites {
-		for route in site.routes {
-			if route.upstream in s.addresses { continue }
-			u := urllib.parse('http://${route.upstream}')!
-			addr := C.vaddy_resolve(&char(u.hostname().str), &char(u.port().str))
-			if addr == unsafe { nil } { return error('cannot resolve upstream ${route.upstream}') }
-			s.addresses[route.upstream] = addr
-		}
-	}
-	defer {
-		for _, addr in s.addresses {
-			unsafe { free(addr) }
-		}
-	}
+	s.backends = prepare_backends(cfg)!
+	defer { free_backends(s.backends) }
 	s.http_fd = C.vaddy_listen(&char(opts.bind.str), &char(cfg.http_port.str().str))
 	if s.http_fd < 0 {
 		return error('cannot listen on ${opts.bind}:${cfg.http_port} (check permissions and existing listeners)')

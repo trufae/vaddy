@@ -128,3 +128,31 @@ second. Accepts pause at capacity or on descriptor exhaustion to avoid a busy lo
 The optimized macOS binary measured approximately 808 KiB during development
 (shared OpenSSL/GC libraries are additional). The [benchmark results](BENCHMARKS.md)
 include a local TCP/TLS comparison with Caddy; it is not a production capacity test.
+
+## HTTPS backends
+
+Use `reverse_proxy https://backend.example:8443` to encrypt the connection to
+an app. Upstream TLS uses TLS 1.2 or newer, verifies the certificate chain and
+DNS name/IP address, and sends SNI for DNS names. HTTP/1.1 streaming, uploads,
+WebSockets and per-client keep-alive work over TLS too. HTTPS upstreams receive
+the upstream address as `Host`; `X-Forwarded-Host` keeps the original host.
+
+System OpenSSL trust roots are used by default. For a private CA or a backend
+reached by IP with a DNS certificate, configure:
+
+```caddyfile
+localhost {
+    tls internal
+    reverse_proxy https://127.0.0.1:8443 {
+        transport http {
+            tls_server_name backend.internal
+            tls_trust_pool file /path/to/backend-ca.pem
+        }
+    }
+}
+```
+
+The explicit CA file replaces the default trust roots for that route. Certificate
+verification cannot be disabled. A failed handshake returns 502 without sending
+the HTTP request to the backend. The header timeout also bounds upstream TLS
+handshakes. Trust-file changes take effect on restart.

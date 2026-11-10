@@ -44,3 +44,7 @@ fn C.vaddy_close(int) int
 fn C.vaddy_queue_close(int)
 fn C.vaddy_unlock(int)
 fn C.vaddy_replace(&char, &char) int
+
+fn C.vaddy_upstream_context(&char) voidptr
+fn C.vaddy_upstream_tls(voidptr, int, &char) voidptr
+fn C.vaddy_upstream_handshake(voidptr) int

@@ -29,6 +29,7 @@ test:
 
 integration: $(TARGET)
 	python3 tests/integration.py ./$(TARGET)
+	python3 tests/upstream.py ./$(TARGET)
 
 bench:
 	VADDY_BENCH=1 $(V) -cc clang -gc boehm -cflags '-O3' -d use_openssl src/server_test.v

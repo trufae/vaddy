@@ -27,7 +27,7 @@ To update Raddy later, run `git -C raddy pull --ff-only` before rebuilding.
 
 ```sh
 make test          # parser, framing, real socket-pair proxy I/O, TLS, mock ACME
-make integration   # real loopback TCP/TLS against a local backend
+make integration   # real loopback TCP/TLS and verified HTTPS backends
 make bench         # optimized socket-pair request-path microbenchmark
 make bench-workers # separate-process TLS socket-pair comparison of 1/2 workers
 make compare       # build ./caddy and ./raddy; compare all three over TCP/TLS
@@ -107,3 +107,7 @@ framing, streaming, certificate policy, and ACME logic are written in V.
 Protocol references: [ACME RFC 8555](https://www.rfc-editor.org/rfc/rfc8555),
 [Caddy automatic HTTPS](https://caddyserver.com/docs/automatic-https), and
 [OpenSSL nonblocking I/O](https://docs.openssl.org/3.0/man3/SSL_read/).
+
+`tests/upstream.py` verifies private-CA HTTPS backends, SNI/Host behavior,
+streaming and keep-alive with two workers. Untrusted, wrong-name and mismatched
+IP-address certificates must return 502. All certificates are generated locally.

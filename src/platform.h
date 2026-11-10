@@ -47,6 +47,34 @@ static void *vaddy_tls_new(void *ctx, int64_t fd) {
     if (!SSL_set_fd(ssl, (int)fd)) { SSL_free(ssl); return NULL; }
     SSL_set_accept_state(ssl); return ssl;
 }
+static void *vaddy_upstream_context(const char *ca) {
+    SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
+    if (!ctx) return NULL;
+    SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
+    SSL_CTX_set_options(ctx, SSL_OP_NO_COMPRESSION | SSL_OP_NO_RENEGOTIATION);
+    SSL_CTX_set_mode(ctx, SSL_MODE_RELEASE_BUFFERS | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+    int ok = *ca ? SSL_CTX_load_verify_locations(ctx, ca, NULL) : SSL_CTX_set_default_verify_paths(ctx);
+    if (!ok) { SSL_CTX_free(ctx); return NULL; }
+    return ctx;
+}
+static void *vaddy_upstream_tls(void *ctx, int64_t fd, const char *name) {
+    SSL *ssl = SSL_new(ctx);
+    if (!ssl) return NULL;
+    int ok = SSL_set_fd(ssl, (int)fd);
+    ASN1_OCTET_STRING *ip = a2i_IPADDRESS(name);
+    if (ip) {
+        ok = ok && X509_VERIFY_PARAM_set1_ip(SSL_get0_param(ssl), ASN1_STRING_get0_data(ip), ASN1_STRING_length(ip));
+        ASN1_OCTET_STRING_free(ip);
+    } else {
+        ok = ok && SSL_set1_host(ssl, name) && SSL_set_tlsext_host_name(ssl, name);
+    }
+    static const unsigned char alpn[] = {8, 'h','t','t','p','/','1','.','1'};
+    if (!ok || SSL_set_alpn_protos(ssl, alpn, sizeof alpn)) { SSL_free(ssl); return NULL; }
+    SSL_set_connect_state(ssl);
+    return ssl;
+}
+static int vaddy_upstream_handshake(void *ssl) { ERR_clear_error(); return SSL_connect(ssl); }
 static int vaddy_tls_read(void *ssl, void *buf, int len) { ERR_clear_error(); return SSL_read(ssl, buf, len); }
 static int vaddy_tls_write(void *ssl, const void *buf, int len) { ERR_clear_error(); return SSL_write(ssl, buf, len); }
 static int vaddy_tls_handshake(void *ssl) { ERR_clear_error(); return SSL_accept(ssl); }

@@ -91,7 +91,7 @@ fn (mut s Server) start_workers() ! {
 			control_fd: int(fds[0])
 			incoming:   incoming
 			pool:       s.pool
-			addresses:  s.addresses
+			backends:   s.backends
 		}
 		worker.watch(int(fds[0]), 1) or {
 			C.vaddy_queue_close(queue)

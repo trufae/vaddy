@@ -289,7 +289,7 @@ fn hop_header(name string, connection []string) bool {
 		'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade'] || name in connection
 }
 
-fn (mut b Buffer) request_header(m Message, uri string, ip string, tls bool) {
+fn (mut b Buffer) request_header(m Message, uri string, ip string, tls bool, host string) {
 	b.write_string(m.method)
 	b.write_string(' ')
 	b.write_string(uri)
@@ -302,7 +302,7 @@ fn (mut b Buffer) request_header(m Message, uri string, ip string, tls bool) {
 		}
 		b.write_string(field.name)
 		b.write_string(': ')
-		b.write_string(field.value)
+		b.write_string(if key == 'host' && host != '' { host } else { field.value })
 		b.write_string('\r\n')
 	}
 	if m.frame.kind == .chunked { b.write_string('Transfer-Encoding: chunked\r\n') }

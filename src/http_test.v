@@ -6,7 +6,7 @@ fn parse_message(raw string, request bool, head bool) !Message {
 
 fn request_header(m Message, uri string, ip string, tls bool) string {
 	mut b := Buffer{}
-	b.request_header(m, uri, ip, tls)
+	b.request_header(m, uri, ip, tls, '')
 	return b.bytes().bytestr()
 }
 

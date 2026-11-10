@@ -19,6 +19,8 @@ mut:
 	matcher  string
 	rewrite  string
 	upstream string
+	tls_server_name string
+	tls_ca string
 }
 
 struct Site {
@@ -144,14 +146,46 @@ fn port_value(s string) !int {
 }
 
 fn upstream_address(s string) !string {
-	value := s.trim_string_left('http://')
+	tls := s.starts_with('https://')
+	value := s.trim_string_left('https://').trim_string_left('http://')
 	u := urllib.parse('http://${value}')!
-	if u.host == '' || u.path !in ['', '/'] || u.raw_query != '' || u.fragment != '' || s.contains('https://') || value.contains('@') {
-		return error('reverse_proxy requires one plain HTTP host:port upstream')
+	if u.hostname() == '' || u.path !in ['', '/'] || u.raw_query != '' || u.fragment != '' || value.contains('@') || value.contains('://') || invalid_controls(value, false) {
+		return error('reverse_proxy requires one HTTP or HTTPS host:port upstream')
 	}
-	if u.port() == '' { return '${u.host}:80' }
-	port_value(u.port())!
-	return u.host
+	port := if u.port() == '' { if tls { '443' } else { '80' } } else { u.port() }
+	port_value(port)!
+	host := if u.hostname().contains(':') { '[${u.hostname()}]' } else { u.hostname() }
+	return '${if tls { 'https://' } else { '' }}${host}:${port}'
+}
+
+fn (r Route) backend_key() string {
+	if !r.upstream.starts_with('https://') { return r.upstream }
+	return '${r.upstream}\n${r.tls_server_name}\n${r.tls_ca}'
+}
+
+fn parse_proxy(d Directive, mut route Route) ! {
+	if d.args.len != 2 || route.upstream != '' { return error('expected reverse_proxy host:port') }
+	route.upstream = upstream_address(d.args[1])!
+	mut transport_seen := false
+	for child in d.children {
+		if child.args != ['transport', 'http'] || transport_seen || child.children.len == 0 {
+			return error('unsupported reverse_proxy option')
+		}
+		transport_seen = true
+		for opt in child.children {
+			if opt.children.len > 0 { return error('unsupported transport block') }
+			if opt.args.len == 2 && opt.args[0] == 'tls_server_name' && route.tls_server_name == '' && valid_host(opt.args[1]) {
+				route.tls_server_name = opt.args[1]
+			} else if opt.args.len == 3 && opt.args[..2] == ['tls_trust_pool', 'file'] && route.tls_ca == '' {
+				route.tls_ca = opt.args[2]
+			} else {
+				return error('supported transport options: tls_server_name and tls_trust_pool file')
+			}
+		}
+	}
+	if transport_seen && !route.upstream.starts_with('https://') {
+		return error('TLS transport options require an https:// upstream')
+	}
 }
 
 fn parse_route(d Directive) !Route {
@@ -168,7 +202,7 @@ fn parse_route(d Directive) !Route {
 		}
 	}
 	for child in d.children {
-		if child.args.len == 0 || child.children.len > 0 {
+		if child.args.len == 0 || (child.children.len > 0 && child.args[0] != 'reverse_proxy') {
 			return error('line ${child.line}: unsupported nested directive')
 		}
 		match child.args[0] {
@@ -182,10 +216,7 @@ fn parse_route(d Directive) !Route {
 				}
 			}
 			'reverse_proxy' {
-				if child.args.len != 2 || route.upstream != '' {
-					return error('line ${child.line}: expected reverse_proxy host:port')
-				}
-				route.upstream = upstream_address(child.args[1])!
+				parse_proxy(child, mut route)!
 			}
 			else {
 				return error('line ${child.line}: unsupported handle directive ${child.args[0]}')
@@ -277,10 +308,9 @@ fn parse_config(input string) !Config {
 				}
 				'handle' { site.routes << parse_route(child)! }
 				'reverse_proxy' {
-					if child.args.len != 2 || child.children.len > 0 {
-						return error('expected reverse_proxy host:port')
-					}
-					site.routes << Route{ upstream: upstream_address(child.args[1])! }
+					mut route := Route{}
+					parse_proxy(child, mut route)!
+					site.routes << route
 				}
 				'tls' {
 					if child.children.len > 0 { return error('tls blocks are not supported') }

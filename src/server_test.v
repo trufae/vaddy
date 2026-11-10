@@ -348,3 +348,52 @@ fn test_workers_distribute_connections_and_share_admission_limit() ! {
 	for _, mut c in s.clients.clone() { s.close_client(mut c) }
 	assert s.active_clients() == 0
 }
+
+
+fn test_header_edits_on_proxy_keepalive_and_local_response() ! {
+	mut h := harness()!
+	defer { h.close() }
+	h.s.cfg = parse_config('http://localhost {\n header {\n X-Site yes\n -Server\n ?X-Existing default\n +Set-Cookie extra=1\n }\n request_header X-Client {remote_host}\n handle {\n header X-Path {uri}\n reverse_proxy localhost:8001 {\n header_up Host app.internal\n header_up -X-Secret\n header_up X-Forwarded-For configured\n header_down X-Backend replaced\n }\n }\n}')!
+	for path in ['/first', '/second?literal={host}'] {
+		send_text(h.client, 'GET ${path} HTTP/1.1\r\nHost: localhost\r\nX-Secret: password\r\n\r\n')
+		h.pump()!
+		request := receive(h.upstream)
+		assert request.contains('Host: app.internal\r\n')
+		assert request.contains('X-Client: 127.0.0.1\r\n')
+		assert request.contains('X-Forwarded-For: configured\r\n')
+		assert !request.contains('password')
+		send_text(h.upstream, 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nServer: backend\r\nX-Existing: original\r\nX-Backend: old\r\nSet-Cookie: a=1\r\nSet-Cookie: b=2\r\n\r\nok')
+		h.pump()!
+		response := receive(h.client)
+		assert !response.contains('Server:')
+		assert response.contains('X-Existing: original\r\n')
+		assert response.contains('X-Site: yes\r\n')
+		assert response.contains('X-Path: ${path}\r\n')
+		assert response.contains('X-Backend: replaced\r\n')
+		assert response.count('Set-Cookie:') == 3
+		assert response.ends_with('\r\n\r\nok')
+	}
+	h.s.cfg.sites[0].plain = false
+	send_text(h.client, 'HEAD /redirect HTTP/1.1\r\nHost: localhost\r\n\r\n')
+	h.pump()!
+	response := receive(h.client)
+	assert response.contains('X-Site: yes\r\n')
+	assert response.starts_with('HTTP/1.1 308')
+}
+
+fn test_header_edit_validation_and_output_limits() ! {
+	for directive in ['header Content-Length 5', 'header +Connection close', 'request_header -Host', 'request_header +Host evil', 'header Bad:Name x', 'header X-Test {unknown}', 'header X-Test one two', 'header X-Test "bad\rvalue"'] {
+		if _ := parse_config('http://localhost {\n ${directive}\n reverse_proxy localhost:8001\n}') { assert false, directive }
+	}
+	mut b := Buffer{}
+	b.write_string('HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n')
+	original := b.bytes().bytestr()
+	edits := [parse_header_edit(['X-Big', '{uri}{uri}'], false, false)!]
+	if _ := edit_headers_for_test(mut b, edits, HeaderValues{uri: 'x'.repeat(header_limit)}) { assert false }
+	assert b.bytes().bytestr() == original
+}
+
+fn edit_headers_for_test(mut b Buffer, edits []HeaderEdit, values HeaderValues) !bool {
+	edit_header_buffer(mut b, edits, values)!
+	return true
+}

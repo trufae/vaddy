@@ -7,7 +7,7 @@ fn test_supplied_caddyfile() ! {
 	assert cfg.http_port == 80 && cfg.https_port == 443
 	assert cfg.domains() == ['example.org']
 	site := cfg.sites[0]
-	assert site.remove_headers == ['cross-origin-embedder-policy', 'cross-origin-opener-policy']
+	assert site.response_headers.map(it.lower) == ['cross-origin-embedder-policy', 'cross-origin-opener-policy']
 	cases := {
 		'/assets/app.js?x=1':    '/static/assets/app.js?x=1'
 		'/app.js':               '/static/app.js'

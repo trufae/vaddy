@@ -10,7 +10,7 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | Matchers | `@name path /a /prefix/*`; inline exact/trailing-wildcard `handle` matchers; case-insensitive, unescaped, normalized path matching |
 | Routing | Mutually exclusive `handle` blocks, single-path specificity sorting, unmatched fallback |
 | Rewriting | `rewrite * /target`, including `{uri}` and preserved query strings |
-| Headers | `header -Name` and removal blocks; repeated response headers are preserved |
+| Headers | `header`, `request_header`, proxy `header_up`/`header_down`; set, append, remove and set-if-absent operations; repeated fields preserved |
 | Proxy | One HTTP/HTTPS upstream per route, verified TLS, preserved HTTP Host (HTTPS uses the upstream Host), regenerated X-Forwarded-For/Host/Proto, hop-by-hop header removal |
 | HTTP | HTTP/1.1, HTTP/1.0 clients with connection close, keep-alive, sequential pipelining, HEAD, informational responses, length/chunked bodies, EOF-delimited responses |
 | Streaming | Bounded upload/download queues, backpressure, SSE, WebSocket upgrades |

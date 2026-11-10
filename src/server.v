@@ -55,6 +55,8 @@ mut:
 	dead            bool
 	local           bool
 	site            int = -1
+	response_headers []HeaderEdit
+	header_values HeaderValues
 	requests        int
 	last_activity   i64
 	started         i64
@@ -141,11 +143,15 @@ fn (mut s Server) respond(mut c Connection, code int, reason string, body string
 	s.close_backend(mut c)
 	c.to_client.clear()
 	c.to_backend.clear()
-	c.to_client.add('HTTP/1.1 ${code} ${reason}\r\nContent-Length: ${body.len}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n${extra}\r\n${if c.request.method == 'HEAD' {
-		''
-	} else {
-		body
-	}}'.bytes())
+	mut header := Buffer{}
+	header.write_string('HTTP/1.1 ${code} ${reason}\r\nContent-Length: ${body.len}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n${extra}\r\n')
+	edit_header_buffer(mut header, c.response_headers, c.header_values) or {
+		// Never emit malformed or oversized configured headers, including on errors.
+		header.clear()
+		header.write_string('HTTP/1.1 ${code} ${reason}\r\nContent-Length: ${body.len}\r\nConnection: close\r\n${extra}\r\n')
+	}
+	c.to_client.add(header.bytes())
+	if c.request.method != 'HEAD' { c.to_client.add(body.bytes()) }
 	c.local = true
 	c.close_after = true
 }
@@ -209,6 +215,8 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		return false
 	}
 	site := s.cfg.sites[c.site]
+	c.response_headers = site.response_headers.clone()
+	c.header_values = HeaderValues{uri: m.uri, host: m.host.all_before(':'), hostport: m.host, scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip}
 	if c.tls == unsafe { nil } {
 		if m.uri.all_before('?').starts_with('/.well-known/acme-challenge/') && m.method in [
 			'GET',
@@ -242,6 +250,8 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		s.respond(mut c, 404, 'Not Found', 'Not Found\n', '')
 		return false
 	}
+	c.response_headers << route.response_headers
+	c.header_values.upstream_hostport = route.upstream.trim_string_left('https://')
 	if c.backend >= 0 && (c.backend_name != route.backend_key() || C.vaddy_socket_alive(c.backend) == 0) {
 		s.close_backend(mut c)
 	}
@@ -265,6 +275,9 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	}
 	host := if route.upstream.starts_with('https://') { route.upstream.trim_string_left('https://') } else { '' }
 	c.to_backend.request_header(m, rewrite_uri(m.uri, route.rewrite), c.ip, c.tls != unsafe { nil }, host)
+	mut edits := site.request_headers.clone()
+	edits << route.request_headers
+	edit_header_buffer(mut c.to_backend, edits, c.header_values)!
 	c.close_after = m.close || s.draining || c.requests >= s.opts.max_keepalive_requests - 1
 	if m.expect && !m.frame.done { c.to_client.add('HTTP/1.1 100 Continue\r\n\r\n'.bytes()) }
 	return true
@@ -278,6 +291,14 @@ fn (mut s Server) consume_request(mut c Connection) ! {
 	n := c.request.frame.consume(data[..limit])!
 	c.to_backend.add(data[..n])
 	c.request_buffer.skip(n)
+}
+
+fn (mut s Server) write_response_header(mut c Connection, m Message, close bool) ! {
+	mut header := Buffer{}
+	header.response_header(m, [], close)
+	edit_header_buffer(mut header, c.response_headers, c.header_values)!
+	if c.to_client.room() < header.len() { return error('response header output exceeds buffer') }
+	c.to_client.add(header.bytes())
 }
 
 fn (mut s Server) consume_response(mut c Connection) ! {
@@ -298,7 +319,7 @@ fn (mut s Server) consume_response(mut c Connection) ! {
 		}
 		if m.status < 200 && m.status != 101 {
 			if m.status != 100 || !c.request.expect {
-				c.to_client.response_header(m, s.cfg.sites[c.site].remove_headers, false)
+				s.write_response_header(mut c, m, false)!
 			}
 			continue
 		}
@@ -311,7 +332,7 @@ fn (mut s Server) consume_response(mut c Connection) ! {
 		}
 		if m.frame.kind == .eof { c.close_after = true }
 		c.response = m
-		c.to_client.response_header(m, s.cfg.sites[c.site].remove_headers, c.close_after)
+		s.write_response_header(mut c, m, c.close_after)!
 	}
 	if c.response_buffer.len() > 0 && c.to_client.room() > 0 {
 		data := c.response_buffer.bytes()

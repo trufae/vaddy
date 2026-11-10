@@ -156,3 +156,40 @@ The explicit CA file replaces the default trust roots for that route. Certificat
 verification cannot be disabled. A failed handshake returns 502 without sending
 the HTTP request to the backend. The header timeout also bounds upstream TLS
 handshakes. Trust-file changes take effect on restart.
+
+## Request and response headers
+
+`header` changes response headers; `request_header` changes the headers sent to
+the app. Both work at site level and inside `handle` blocks, in inline or block
+form. A `reverse_proxy` block also accepts `header_up` and `header_down`.
+
+```caddyfile
+example.org {
+    header {
+        X-Content-Type-Options nosniff
+        -Server
+        ?Cache-Control no-cache
+        +X-Tag vaddy
+    }
+    request_header -X-Debug
+    reverse_proxy https://backend.example {
+        header_up Host backend.example
+        header_up X-Original-URI {uri}
+        header_down -X-Powered-By
+    }
+}
+```
+
+A plain name replaces all existing values; `+Name` appends, `-Name` removes, and
+`?Name` supplies a value only if absent. Names are case-insensitive. Site edits
+run before route/proxy edits; edits within each list run in configuration order.
+Request edits apply after automatic forwarding headers and HTTPS Host selection,
+so explicit `header_up` settings can override them. Response edits also apply to
+local redirects and errors when the site/route is known.
+
+Values support `{uri}`, `{host}`, `{hostport}`, `{scheme}`, `{remote_host}` and
+`{upstream_hostport}`. Substitution is a single pass; user-supplied values are
+never expanded again. Regex replacements, header-name wildcards, matcher tokens
+on header directives and deferred-header syntax are not supported. Use `handle`
+for path-specific edits. Framing/connection headers cannot be edited, and request
+`Host` can only be replaced. Output headers are limited to 16 KiB and 128 fields.

@@ -21,13 +21,16 @@ mut:
 	upstream string
 	tls_server_name string
 	tls_ca string
+	request_headers []HeaderEdit
+	response_headers []HeaderEdit
 }
 
 struct Site {
 mut:
 	hosts          []string
 	plain          bool
-	remove_headers []string
+	response_headers []HeaderEdit
+	request_headers []HeaderEdit
 	routes         []Route
 	matchers       map[string][]string
 	tls_mode       string = 'auto'
@@ -168,6 +171,11 @@ fn parse_proxy(d Directive, mut route Route) ! {
 	route.upstream = upstream_address(d.args[1])!
 	mut transport_seen := false
 	for child in d.children {
+		if child.args.len > 0 && child.args[0] in ['header_up', 'header_down'] {
+			edit := parse_header_edit(child.args[1..], child.children.len > 0, child.args[0] == 'header_up')!
+			if child.args[0] == 'header_up' { route.request_headers << edit } else { route.response_headers << edit }
+			continue
+		}
 		if child.args != ['transport', 'http'] || transport_seen || child.children.len == 0 {
 			return error('unsupported reverse_proxy option')
 		}
@@ -202,10 +210,12 @@ fn parse_route(d Directive) !Route {
 		}
 	}
 	for child in d.children {
-		if child.args.len == 0 || (child.children.len > 0 && child.args[0] != 'reverse_proxy') {
+		if child.args.len == 0 || (child.children.len > 0 && child.args[0] !in ['reverse_proxy', 'header', 'request_header']) {
 			return error('line ${child.line}: unsupported nested directive')
 		}
 		match child.args[0] {
+			'header' { route.response_headers << parse_headers(child, false)! }
+			'request_header' { route.request_headers << parse_headers(child, true)! }
 			'rewrite' {
 				if child.args.len != 3 || child.args[1] != '*' || route.rewrite != '' {
 					return error('line ${child.line}: expected rewrite * /target')
@@ -292,20 +302,8 @@ fn parse_config(input string) !Config {
 				continue
 			}
 			match name {
-				'header' {
-					mut entries := child.children.clone()
-					if child.args.len > 1 { entries << Directive{ args: child.args[1..] } }
-					for h in entries {
-						if h.args.len != 1 || !h.args[0].starts_with('-') || !is_token(h.args[0][1..]) || h.children.len > 0 {
-							return error('line ${h.line}: only header -Name is supported')
-						}
-						hname := h.args[0][1..].to_lower()
-						if hname in ['content-length', 'transfer-encoding', 'connection'] {
-							return error('cannot remove HTTP framing header ${hname}')
-						}
-						site.remove_headers << hname
-					}
-				}
+				'header' { site.response_headers << parse_headers(child, false)! }
+				'request_header' { site.request_headers << parse_headers(child, true)! }
 				'handle' { site.routes << parse_route(child)! }
 				'reverse_proxy' {
 					mut route := Route{}

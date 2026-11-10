@@ -251,6 +251,12 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		return false
 	}
 	c.response_headers << route.response_headers
+	if route.redirect != '' {
+		location := expand_header(route.redirect, c.header_values)!
+		if location.len > header_limit / 2 || invalid_controls(location, false) || location.contains(' ') { return error('invalid redirect target') }
+		s.respond(mut c, route.redirect_code, redirect_reason(route.redirect_code), '', 'Location: ${location}\r\n')
+		return false
+	}
 	c.header_values.upstream_hostport = route.upstream.trim_string_left('https://')
 	if c.backend >= 0 && (c.backend_name != route.backend_key() || C.vaddy_socket_alive(c.backend) == 0) {
 		s.close_backend(mut c)

@@ -17,6 +17,9 @@ struct Route {
 mut:
 	patterns []string
 	matcher  string
+	redirect string
+	redirect_code int = 302
+	redirect_first bool
 	rewrite  string
 	upstream string
 	tls_server_name string
@@ -216,6 +219,13 @@ fn parse_route(d Directive) !Route {
 		match child.args[0] {
 			'header' { route.response_headers << parse_headers(child, false)! }
 			'request_header' { route.request_headers << parse_headers(child, true)! }
+			'redir' {
+				if route.redirect != '' { return error('handle has multiple redirects') }
+				redirect := parse_redirect(child)!
+				if redirect.patterns.len > 0 || redirect.matcher != '' { return error('put redirect matcher on handle') }
+				route.redirect = redirect.redirect
+				route.redirect_code = redirect.redirect_code
+			}
 			'rewrite' {
 				if child.args.len != 3 || child.args[1] != '*' || route.rewrite != '' {
 					return error('line ${child.line}: expected rewrite * /target')
@@ -233,11 +243,13 @@ fn parse_route(d Directive) !Route {
 			}
 		}
 	}
-	if route.upstream == '' { return error('line ${d.line}: handle needs reverse_proxy') }
+	if (route.upstream == '') == (route.redirect == '') { return error('handle needs exactly one reverse_proxy or redir') }
+	if route.redirect != '' && route.rewrite != '' { return error('rewrite and redir cannot share a handle') }
 	return route
 }
 
 fn route_before(a Route, b Route) bool {
+	if a.redirect_first != b.redirect_first { return a.redirect_first }
 	if a.patterns.len == 1 && b.patterns.len == 1 {
 		ap := a.patterns[0].trim_string_right('*')
 		bp := b.patterns[0].trim_string_right('*')
@@ -305,6 +317,11 @@ fn parse_config(input string) !Config {
 				'header' { site.response_headers << parse_headers(child, false)! }
 				'request_header' { site.request_headers << parse_headers(child, true)! }
 				'handle' { site.routes << parse_route(child)! }
+				'redir' {
+					mut route := parse_redirect(child)!
+					route.redirect_first = true
+					site.routes << route
+				}
 				'reverse_proxy' {
 					mut route := Route{}
 					parse_proxy(child, mut route)!
@@ -325,7 +342,7 @@ fn parse_config(input string) !Config {
 				else { return error('line ${child.line}: unsupported directive ${name}') }
 			}
 		}
-		if site.routes.len == 0 { return error('site needs a reverse_proxy or handle') }
+		if site.routes.len == 0 { return error('site needs reverse_proxy, handle or redir') }
 		mut fallbacks := 0
 		for mut route in site.routes {
 			if route.matcher != '' {
@@ -340,7 +357,7 @@ fn parse_config(input string) !Config {
 				}
 			}
 			route.patterns = route.patterns.map(it.to_lower())
-			if route.patterns.len == 0 { fallbacks++ }
+			if route.patterns.len == 0 && !route.redirect_first { fallbacks++ }
 		}
 		if fallbacks > 1 { return error('site has multiple fallback routes') }
 		// Stable insertion sort follows Caddy's single-path specificity and fallback rules.

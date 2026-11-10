@@ -397,3 +397,28 @@ fn edit_headers_for_test(mut b Buffer, edits []HeaderEdit, values HeaderValues) 
 	edit_header_buffer(mut b, edits, values)!
 	return true
 }
+
+fn test_custom_redirects_precedence_and_head() ! {
+	for method in ['GET', 'HEAD', 'POST'] {
+		mut h := harness()!
+		h.s.cfg = parse_config('http://localhost {\n header X-Site yes\n reverse_proxy localhost:8001\n @old path /old /old/*\n redir @old https://new.example{uri} permanent\n handle /local {\n header X-Local yes\n redir /target 307\n }\n}')!
+		send_text(h.client, '${method} /old?q=1 HTTP/1.1\r\nHost: localhost\r\n\r\n')
+		h.pump()!
+		response := receive(h.client)
+		assert response.starts_with('HTTP/1.1 301 Moved Permanently\r\n')
+		assert response.contains('Location: https://new.example/old?q=1\r\n')
+		assert response.contains('X-Site: yes\r\n')
+		assert response.ends_with('\r\n\r\n')
+		assert receive(h.upstream) == ''
+		h.close()
+	}
+	mut h := harness()!
+	defer { h.close() }
+	h.s.cfg = parse_config('http://localhost {\n handle /local {\n header X-Local yes\n redir /target 307\n }\n}')!
+	send_text(h.client, 'GET /local HTTP/1.1\r\nHost: localhost\r\n\r\n')
+	h.pump()!
+	response := receive(h.client)
+	assert response.starts_with('HTTP/1.1 307')
+	assert response.contains('Location: /target\r\n')
+	assert response.contains('X-Local: yes\r\n')
+}

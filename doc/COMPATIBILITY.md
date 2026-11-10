@@ -9,6 +9,7 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | Site addresses | DNS hostnames, comma/space separated aliases, multiple sites; `http://name` opts out of TLS. Use global/CLI ports instead of address port suffixes. |
 | Matchers | `@name path /a /prefix/*`; inline exact/trailing-wildcard `handle` matchers; case-insensitive, unescaped, normalized path matching |
 | Routing | Mutually exclusive `handle` blocks, single-path specificity sorting, unmatched fallback |
+| Redirects | `redir [path or @matcher] target [301/302/303/307/308/permanent/temporary]`; redirect-only sites and redirects inside `handle` |
 | Rewriting | `rewrite * /target`, including `{uri}` and preserved query strings |
 | Headers | `header`, `request_header`, proxy `header_up`/`header_down`; set, append, remove and set-if-absent operations; repeated fields preserved |
 | Proxy | One HTTP/HTTPS upstream per route, verified TLS, preserved HTTP Host (HTTPS uses the upstream Host), regenerated X-Forwarded-For/Host/Proto, hop-by-hop header removal |

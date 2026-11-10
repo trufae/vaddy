@@ -1,8 +1,12 @@
 /vaddy
+/vaddy.exe
+/.tools/
+/dist/
 /caddy-bench
 /caddy/
 /benchmark-results.json
 /benchmark-workers.json
 /src/*_test
+/src/*_test.exe
 /tests/__pycache__/
 /.vaddy-data/

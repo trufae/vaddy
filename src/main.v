@@ -96,7 +96,7 @@ fn cli() ! {
 	if lock_fd < 0 {
 		return error('data directory is locked by another vaddy process: ${opts.data}')
 	}
-	defer { C.close(lock_fd) }
+	defer { C.vaddy_unlock(lock_fd) }
 	if site := cfg.tls_site() {
 		if site.tls_mode != 'manual' { openssl_executable()! }
 	}

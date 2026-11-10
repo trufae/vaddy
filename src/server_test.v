@@ -5,12 +5,12 @@ import time
 
 #include "@VMODROOT/tests/support.h"
 
-fn C.socketpair(int, int, int, &i32) int
 fn C.vaddy_nonblock(int) int
 fn C.vaddy_test_tls_client(int, &char) voidptr
 fn C.vaddy_test_tls_connect(voidptr) int
 fn C.vaddy_test_peak_rss() i64
 fn C.vaddy_test_cpu_us() i64
+fn C.vaddy_test_socket_buffers(int) int
 
 struct Harness {
 mut:
@@ -21,12 +21,14 @@ mut:
 }
 
 fn socket_pair() ![]int {
-	mut fds := []i32{len: 2}
-	if C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, fds.data) != 0 {
+	mut fds := []i64{len: 2}
+	if C.vaddy_wakeup_pair(fds.data) != 0 {
 		return error('socketpair failed')
 	}
 	assert C.vaddy_nonblock(fds[0]) == 0
 	assert C.vaddy_nonblock(fds[1]) == 0
+	assert C.vaddy_test_socket_buffers(fds[0]) == 0
+	assert C.vaddy_test_socket_buffers(fds[1]) == 0
 	return fds.map(int(it))
 }
 
@@ -43,14 +45,14 @@ fn harness() !Harness {
 }
 
 fn send_text(fd int, data string) {
-	assert C.send(fd, data.str, uint(data.len), 0) == data.len
+	assert C.vaddy_send(fd, data.str, uint(data.len), 0) == data.len
 }
 
 fn receive(fd int) string {
 	mut data := []u8{}
 	mut buf := [65536]u8{}
 	for {
-		n := C.recv(fd, &buf[0], uint(buf.len), 0)
+		n := C.vaddy_recv(fd, &buf[0], uint(buf.len), 0)
 		if n <= 0 { break }
 		data << buf[..n]
 	}
@@ -59,16 +61,19 @@ fn receive(fd int) string {
 
 fn (mut h Harness) pump() ! {
 	for _ in 0 .. 3 {
+		// Windows uses loopback TCP pairs; allow delivery between nonblocking pumps.
+		$if windows { time.sleep(time.millisecond) }
 		h.s.pump(mut h.c, h.c.fd)!
 		if h.c.backend >= 0 { h.s.pump(mut h.c, h.c.backend)! }
 	}
+	$if windows { time.sleep(time.millisecond) }
 }
 
 fn (mut h Harness) close() {
 	h.s.close_client(mut h.c)
-	C.close(h.client)
-	C.close(h.upstream)
-	C.close(h.s.queue)
+	C.vaddy_close(h.client)
+	C.vaddy_close(h.upstream)
+	C.vaddy_queue_close(h.s.queue)
 }
 
 fn test_proxy_socket_io_rewrite_keepalive_pipeline_headers() ! {
@@ -207,7 +212,7 @@ fn test_internal_tls_issuance_handshake_and_reload() ! {
 	chunk := 'z'.repeat(4096)
 	mut sent := 0
 	for _ in 0 .. 100 {
-		amount := C.send(h.upstream, chunk.str, uint(chunk.len), 0)
+		amount := C.vaddy_send(h.upstream, chunk.str, uint(chunk.len), 0)
 		if amount > 0 { sent += amount }
 		h.pump()!
 		if amount < 0 { break }
@@ -219,7 +224,7 @@ fn test_internal_tls_issuance_handshake_and_reload() ! {
 	mut received := []u8{}
 	for _ in 0 .. 10000 {
 		if sent < 262144 {
-			amount := C.send(h.upstream, chunk.str, uint(if 262144 - sent < chunk.len {
+			amount := C.vaddy_send(h.upstream, chunk.str, uint(if 262144 - sent < chunk.len {
 				262144 - sent
 			} else {
 				chunk.len
@@ -281,10 +286,10 @@ fn test_benchmark_socketpair_proxy() ! {
 		h.c.requests = 0
 		send_text(h.client, request)
 		h.s.pump(mut h.c, h.c.fd)!
-		assert C.recv(h.upstream, &buf[0], uint(buf.len), 0) > 0
+		assert C.vaddy_recv(h.upstream, &buf[0], uint(buf.len), 0) > 0
 		send_text(h.upstream, response)
 		h.s.pump(mut h.c, h.c.backend)!
-		assert C.recv(h.client, &buf[0], uint(buf.len), 0) == response.len
+		assert C.vaddy_recv(h.client, &buf[0], uint(buf.len), 0) == response.len
 	}
 	elapsed := mono_ms() - start
 	cpu := C.vaddy_test_cpu_us() - cpu_start
@@ -294,7 +299,7 @@ fn test_benchmark_socketpair_proxy() ! {
 fn test_workers_distribute_connections_and_share_admission_limit() ! {
 	cfg := parse_config('http://localhost {\n reverse_proxy localhost:8001\n}')!
 	mut s := Server{ cfg: cfg, opts: Options{ workers: 2, max_connections: 4 }, queue: C.vaddy_queue() }
-	defer { C.close(s.queue) }
+	defer { C.vaddy_queue_close(s.queue) }
 	s.start_workers()!
 	defer {
 		s.stop_workers()
@@ -303,8 +308,8 @@ fn test_workers_distribute_connections_and_share_admission_limit() ! {
 	mut fronts := []int{}
 	mut backs := []int{}
 	defer {
-		for fd in fronts { C.close(fd) }
-		for fd in backs { C.close(fd) }
+		for fd in fronts { C.vaddy_close(fd) }
+		for fd in backs { C.vaddy_close(fd) }
 	}
 	for _ in 0 .. 5 {
 		front := socket_pair()!

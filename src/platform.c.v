@@ -1,6 +1,7 @@
 module main
 
 #pkgconfig openssl
+#flag windows -lws2_32 -lpsapi
 #include "@VMODROOT/src/platform.h"
 
 struct C.vaddy_event {
@@ -14,7 +15,7 @@ fn C.vaddy_socket_alive(int) int
 fn C.vaddy_private_files()
 fn C.vaddy_cert_seconds(&char, int) i64
 fn C.vaddy_signals()
-fn C.vaddy_wakeup_pair(&i32) int
+fn C.vaddy_wakeup_pair(&i64) int
 fn C.vaddy_notify(int) int
 fn C.vaddy_stopped() int
 fn C.vaddy_resolve(&char, &char) voidptr
@@ -37,6 +38,9 @@ fn C.vaddy_tls_pending(voidptr) int
 fn C.vaddy_tls_has_pending(voidptr) int
 fn C.vaddy_tls_free(voidptr)
 fn C.vaddy_tls_ctx_free(voidptr)
-fn C.recv(int, voidptr, uint, int) int
-fn C.send(int, voidptr, uint, int) int
-fn C.close(int) int
+fn C.vaddy_recv(int, voidptr, uint, int) int
+fn C.vaddy_send(int, voidptr, uint, int) int
+fn C.vaddy_close(int) int
+fn C.vaddy_queue_close(int)
+fn C.vaddy_unlock(int)
+fn C.vaddy_replace(&char, &char) int

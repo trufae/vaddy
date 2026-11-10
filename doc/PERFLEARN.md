@@ -394,19 +394,22 @@ output parameter produced invalid descriptor values because the element widths
 and offsets did not match. Scalar argument conversions do not fix pointer or
 array layouts.
 
-The corrected adapter uses an explicit 32-bit output array:
+The direct C call requires an explicit 32-bit output array:
 
 ```v
-fn C.vaddy_wakeup_pair(&i32) int
+fn C.socketpair(int, int, int, &i32) int
 
 mut fds := [2]i32{}
-if C.vaddy_wakeup_pair(&fds[0]) != 0 {
+if C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &fds[0]) != 0 {
     return error('cannot create wakeup sockets')
 }
 ```
 
 Convert each descriptor to the application's `int` representation after C has
-written it. Apply the same discipline to structures, pointers, lengths, return
+written it. The later Windows port wraps this boundary in `vaddy_wakeup_pair`,
+which exposes `int64_t` outputs: POSIX C descriptors are widened inside the
+adapter, and Windows socket handles retain their width. Apply the same
+discipline to structures, pointers, lengths, return
 types, and signedness at ABI boundaries. Confirm the actual target/compiler
 layout; do not assume V `int` universally matches C `int` or infer a permanent
 language rule from this checkout.
@@ -564,7 +567,9 @@ because it sounds faster.
 | [src/config.v](../src/config.v) | Configuration-time normalization, path matching and rewriting |
 | [src/server.v](../src/server.v) | Nonblocking pump, backpressure, watches, timeouts, certificate reload |
 | [src/workers.v](../src/workers.v) | Connection ownership, admission accounting, wakeups and shutdown |
-| [src/platform.h](../src/platform.h) | Small POSIX/OpenSSL adapters; epoll/kqueue implementation |
+| [src/platform.h](../src/platform.h) | OpenSSL adapters and OS header selection |
+| [src/platform_posix.h](../src/platform_posix.h) | POSIX sockets and epoll/kqueue implementation |
+| [src/platform_windows.h](../src/platform_windows.h) | Winsock polling, wakeups, locks and file replacement |
 | [src/platform.c.v](../src/platform.c.v) | V declarations for the C boundary |
 | [src/acme.v](../src/acme.v) | Certificate work outside the request loop |
 | [tests/ipc_bench.py](../tests/ipc_bench.py) | Reproducible builds and worker/profile experiments |

@@ -6,6 +6,33 @@ import net.http
 import encoding.base64
 import crypto.sha256
 
+fn test_atomic_publication_replaces_existing_file() ! {
+	dir := os.join_path(os.temp_dir(), 'vaddy-publication-${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	path := os.join_path(dir, 'current')
+	atomic_write(path, 'first')!
+	atomic_write(path, 'second')!
+	assert os.read_file(path)! == 'second'
+	assert !os.exists(path + '.tmp')
+}
+
+fn test_storage_lock_is_exclusive_and_released() ! {
+	dir := os.join_path(os.temp_dir(), 'vaddy-lock-${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	path := os.join_path(dir, 'lock')
+	first := C.vaddy_lock(&char(path.str))
+	assert first >= 0
+	second := C.vaddy_lock(&char(path.str))
+	if second >= 0 { C.vaddy_unlock(second) }
+	C.vaddy_unlock(first)
+	assert second < 0
+	third := C.vaddy_lock(&char(path.str))
+	assert third >= 0
+	C.vaddy_unlock(third)
+}
+
 struct ProtectedJwk {
 	e   string
 	kty string

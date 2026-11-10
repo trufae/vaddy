@@ -1,0 +1,13 @@
+.git
+.tools
+dist
+caddy
+vaddy
+vaddy.exe
+caddy-bench
+benchmark-results.json
+benchmark-workers.json
+.vaddy-data
+**/__pycache__
+**/*_test.exe
+**/*.o

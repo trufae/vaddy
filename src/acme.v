@@ -95,7 +95,7 @@ fn atomic_write(path string, data string) ! {
 	tmp := path + '.tmp'
 	os.write_file(tmp, data)!
 	os.chmod(tmp, 0o600)!
-	os.rename(tmp, path)!
+	if C.vaddy_replace(&char(tmp.str), &char(path.str)) != 0 { return error('cannot publish ${path}') }
 }
 
 fn safe_generation(s string) bool {

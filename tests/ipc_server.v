@@ -16,7 +16,7 @@ fn ipc_server() ! {
 	cfg.sites[0].plain = !use_tls
 	mut s := Server{cfg: cfg, opts: Options{workers: workers, max_connections: count, max_keepalive_requests: 100000000}, queue: C.vaddy_queue()}
 	if s.queue < 0 { return error('event queue failed') }
-	defer { C.close(s.queue) }
+	defer { C.vaddy_queue_close(s.queue) }
 	if use_tls {
 		s.ctx = C.vaddy_tls_context(&char(cert.str), &char(key.str))
 		if s.ctx == unsafe { nil } { return error('TLS context failed') }

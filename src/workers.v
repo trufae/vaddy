@@ -52,7 +52,7 @@ fn (mut s Server) dispatch_client(mut c Connection) {
 
 fn (mut s Server) drain_incoming() {
 	mut bytes := [256]u8{}
-	for C.recv(s.control_fd, &bytes[0], uint(bytes.len), 0) > 0 {
+	for C.vaddy_recv(s.control_fd, &bytes[0], uint(bytes.len), 0) > 0 {
 	}
 	for {
 		select {
@@ -74,12 +74,12 @@ fn (mut s Server) start_workers() ! {
 		s.opts.max_connections
 	}
 	for _ in 1 .. count {
-		mut fds := [2]i32{}
+		mut fds := [2]i64{}
 		if C.vaddy_wakeup_pair(&fds[0]) != 0 { return error('cannot create worker wakeup sockets') }
 		queue := C.vaddy_queue()
 		if queue < 0 {
-			C.close(fds[0])
-			C.close(fds[1])
+			C.vaddy_close(fds[0])
+			C.vaddy_close(fds[1])
 			return error('cannot create worker event queue')
 		}
 		incoming := chan &Connection{cap: s.opts.max_connections}
@@ -88,19 +88,19 @@ fn (mut s Server) start_workers() ! {
 			opts:       s.opts
 			queue:      queue
 			http_fd:    -1
-			control_fd: fds[0]
+			control_fd: int(fds[0])
 			incoming:   incoming
 			pool:       s.pool
 			addresses:  s.addresses
 		}
-		worker.watch(fds[0], 1) or {
-			C.close(queue)
-			C.close(fds[0])
-			C.close(fds[1])
+		worker.watch(int(fds[0]), 1) or {
+			C.vaddy_queue_close(queue)
+			C.vaddy_close(fds[0])
+			C.vaddy_close(fds[1])
 			return err
 		}
 		s.pool.inboxes << incoming
-		s.pool.wake_fds << fds[1]
+		s.pool.wake_fds << int(fds[1])
 		s.pool.threads << spawn worker.serve_worker()
 	}
 }
@@ -113,8 +113,8 @@ fn (mut s Server) serve_worker() {
 	s.draining = true
 	s.drain_incoming()
 	for _, mut c in s.clients.clone() { s.close_client(mut c) }
-	C.close(s.control_fd)
-	C.close(s.queue)
+	C.vaddy_close(s.control_fd)
+	C.vaddy_queue_close(s.queue)
 }
 
 fn (mut s Server) stop_workers() {
@@ -134,7 +134,7 @@ fn (mut s Server) stop_workers() {
 				}
 			}
 		}
-		C.close(s.pool.wake_fds[i])
+		C.vaddy_close(s.pool.wake_fds[i])
 	}
 	s.pool.threads.clear()
 	s.pool.inboxes.clear()

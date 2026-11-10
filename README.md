@@ -2,7 +2,7 @@
 
 **Automatic HTTPS. Streaming reverse proxy. Written in V.**
 
-[Usage](doc/USAGE.md) · [Compatibility](doc/COMPATIBILITY.md) ·
+[Usage](doc/USAGE.md) · [Builds & CI](doc/BUILDING.md) · [Compatibility](doc/COMPATIBILITY.md) ·
 [Benchmarks](doc/BENCHMARKS.md) · [Performance lessons](doc/PERFLEARN.md) ·
 [Testing](doc/TESTING.md)
 
@@ -15,7 +15,7 @@ unsupported directives fail validation.
 | Automatic HTTPS | HTTP on **80**, HTTPS on **443**, ACME HTTP-01 and certificate renewal |
 | Routing | Path matchers, asset rewrites, query preservation and response-header removal |
 | Streaming | Bounded buffers, backpressure, SSE and WebSocket upgrades |
-| Concurrency | epoll/kqueue reactors, optional workers and a global connection limit |
+| Concurrency | epoll/kqueue/Windows polling, optional workers and a global connection limit |
 | Certificates | Public ACME, a local development CA, manual certificates and live reload |
 
 ## Get started
@@ -58,9 +58,13 @@ per request**. A fresh TCP comparison is needed to measure the current gap.
 make test          # HTTP, routing, streaming, TLS, workers and mock ACME
 make integration   # Loopback TCP/TLS integration tests
 make compare       # Build ./caddy and compare both servers
+make alpine        # Build/test Alpine x86-64; export dist/vaddy-alpine-x86_64
 ```
 
-The server runs natively in V with small POSIX/OpenSSL adapters. Go is used only
+GitHub Actions builds and tests Linux, macOS and native Windows, plus the Alpine
+target. See [build instructions](doc/BUILDING.md) for toolchains and dependencies.
+
+The server runs natively in V with small OS/OpenSSL adapters. Go is used only
 by the comparison tools and the Caddy reference build. HTTP/2, HTTP/3 and Caddy's
 full module ecosystem are outside the current scope; see
 [compatibility](doc/COMPATIBILITY.md).

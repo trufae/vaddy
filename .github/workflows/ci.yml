@@ -1,0 +1,94 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2022]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang make pkg-config libssl-dev openssl python3
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install pkgconf openssl@3
+          echo "$(brew --prefix openssl@3)/bin" >> "$GITHUB_PATH"
+
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-python
+
+      - name: Build pinned V compiler (Unix)
+        if: runner.os != 'Windows'
+        run: sh ci/bootstrap-v.sh .tools/v
+
+      - name: Build pinned V compiler (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: sh ci/bootstrap-v.sh .tools/v
+
+      - name: Build and test (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          make V="$PWD/.tools/v/v"
+          make test V="$PWD/.tools/v/v"
+          ./vaddy validate --config Caddyfile
+          make integration V="$PWD/.tools/v/v"
+
+      - name: Build and test (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          make V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
+          make test V="$PWD/.tools/v/v.exe" VTESTFLAGS='-cc gcc -gc boehm'
+          ./vaddy.exe validate --config Caddyfile
+          make integration V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
+
+  alpine:
+    name: Alpine Linux x86-64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and test Alpine binary
+        run: make alpine
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vaddy-alpine-x86_64
+          path: dist/vaddy-alpine-x86_64
+          if-no-files-found: error

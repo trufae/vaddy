@@ -8,8 +8,9 @@ The checked-in hostname, `example.org`, is a placeholder for a domain you contro
 
 Dependencies: a recent V compiler with `json2`, a C compiler, `pkg-config`,
 OpenSSL 3 development libraries, and the `openssl` executable. Tested with
-V `0.5.2 b7b4dd4` on arm64 macOS. The event backend uses epoll on Linux and kqueue
-on macOS/BSD; Linux/BSD execution still needs verification on those systems.
+V `0.5.2 b7b4dd4` on arm64 macOS. The event backend uses epoll on Linux, kqueue
+on macOS/BSD, and Winsock polling on Windows. See [platform builds and CI](BUILDING.md)
+for the pinned compiler, Windows setup, Alpine output, and validation coverage.
 
 ```sh
 make
@@ -67,7 +68,8 @@ The certificate worker:
 - Publishes certificate/key generations through an atomic manifest replacement.
   The reactor loads the new TLS context without interrupting existing connections.
 - Locks the data directory against another Vaddy writer. Directories are private
-  and newly created files use mode 0600. Account storage is scoped to the ACME CA;
+  on POSIX and newly created files use mode 0600. Windows uses inherited ACLs;
+  choose a private user/service data directory. Account storage is scoped to the ACME CA;
   issuer/configuration metadata prevents accidental certificate reuse across CAs.
 
 Starting an ACME configuration registers an account with agreement to the chosen

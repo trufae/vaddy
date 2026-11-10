@@ -4,6 +4,11 @@ Run these commands from the repository root. See [benchmark results](BENCHMARKS.
 for recorded measurements and [performance lessons](PERFLEARN.md) for the
 reasoning behind the optimizations.
 
+[GitHub Actions](../.github/workflows/ci.yml) runs the V suite and real TCP/TLS
+integration test on Linux, macOS and Windows. An additional job builds and tests
+Alpine x86-64 using `make alpine`. See [build instructions](BUILDING.md) for the
+toolchain pins and details of each job.
+
 The Caddy reference checkout is separate from this repository and is ignored by
 Git. To prepare it for `make compare` on a fresh checkout:
 
@@ -75,7 +80,7 @@ make compare COMPARE_ARGS='--vaddy-workers 2 --output benchmark-results-workers2
 ```
 
 Core implementation: `src/config.v`, `src/http.v`, `src/server.v`, `src/workers.v`, and
-`src/acme.v`. `src/platform.h` is a small POSIX/OpenSSL ABI adapter; routing,
+`src/acme.v`. `src/platform.h` and its OS headers provide the OS/OpenSSL adapters; routing,
 framing, streaming, certificate policy, and ACME logic are written in V.
 
 Protocol references: [ACME RFC 8555](https://www.rfc-editor.org/rfc/rfc8555),

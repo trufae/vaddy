@@ -98,7 +98,7 @@ fn (mut s Server) close_backend(mut c Connection) {
 	s.watch(c.backend, 0) or {}
 	s.watches.delete(c.backend)
 	s.owners.delete(c.backend)
-	C.close(c.backend)
+	C.vaddy_close(c.backend)
 	c.backend = -1
 	c.connecting = false
 	c.backend_name = ''
@@ -113,7 +113,7 @@ fn (mut s Server) close_client(mut c Connection) {
 		C.vaddy_tls_free(c.tls)
 		c.tls = unsafe { nil }
 	}
-	C.close(c.fd)
+	C.vaddy_close(c.fd)
 	s.clients.delete(c.fd)
 	s.owners.delete(c.fd)
 	c.dead = true
@@ -152,7 +152,7 @@ fn (mut s Server) accept_clients(listener int, tls bool) {
 			break
 		}
 		if tls && s.ctx == unsafe { nil } {
-			C.close(fd)
+			C.vaddy_close(fd)
 			continue
 		}
 		now := mono_ms()
@@ -160,7 +160,7 @@ fn (mut s Server) accept_clients(listener int, tls bool) {
 		if tls {
 			c.tls = C.vaddy_tls_new(s.ctx, fd)
 			if c.tls == unsafe { nil } {
-				C.close(fd)
+				C.vaddy_close(fd)
 				continue
 			}
 			c.handshake = true
@@ -382,7 +382,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 					c.write_want = 2
 				}
 			} else {
-				n = int(C.send(c.fd, data.data, uint(data.len), 0))
+				n = int(C.vaddy_send(c.fd, data.data, uint(data.len), 0))
 				if n < 0 && C.vaddy_again() == 0 {
 					c.dead = true
 					return
@@ -397,7 +397,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		if c.dead { return }
 		if !c.local && c.backend >= 0 && !c.connecting && c.to_backend.len() > 0 {
 			data := c.to_backend.bytes()
-			n := int(C.send(c.backend, data.data, uint(data.len), 0))
+			n := int(C.vaddy_send(c.backend, data.data, uint(data.len), 0))
 			if n < 0 && C.vaddy_again() == 0 { return error('upstream write failed') }
 			if n > 0 {
 				c.to_backend.skip(n)
@@ -410,7 +410,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 			} else {
 				scratch.len
 			}
-			n := int(C.recv(c.backend, &scratch[0], uint(limit), 0))
+			n := int(C.vaddy_recv(c.backend, &scratch[0], uint(limit), 0))
 			if n < 0 { backend_readable = false }
 			if n < 0 && C.vaddy_again() == 0 { return error('upstream read failed') }
 			if n == 0 { s.backend_eof(mut c)! }
@@ -441,7 +441,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 					c.read_want = 1
 				}
 			} else {
-				n = int(C.recv(c.fd, &scratch[0], uint(scratch.len), 0))
+				n = int(C.vaddy_recv(c.fd, &scratch[0], uint(scratch.len), 0))
 				if n < 0 { client_readable = false }
 				if n == 0 || (n < 0 && C.vaddy_again() == 0) {
 					c.dead = true
@@ -550,7 +550,7 @@ fn (mut s Server) tick() {
 fn run_server(cfg Config, opts Options) ! {
 	mut s := Server{ cfg: cfg, opts: opts, queue: C.vaddy_queue() }
 	if s.queue < 0 { return error('cannot create event queue') }
-	defer { C.close(s.queue) }
+	defer { C.vaddy_queue_close(s.queue) }
 	for site in cfg.sites {
 		for route in site.routes {
 			if route.upstream in s.addresses { continue }
@@ -569,7 +569,7 @@ fn run_server(cfg Config, opts Options) ! {
 	if s.http_fd < 0 {
 		return error('cannot listen on ${opts.bind}:${cfg.http_port} (check permissions and existing listeners)')
 	}
-	defer { if s.http_fd >= 0 { C.close(s.http_fd) } }
+	defer { if s.http_fd >= 0 { C.vaddy_close(s.http_fd) } }
 	s.watch(s.http_fd, 1)!
 	if site := cfg.tls_site() {
 		s.https_fd = C.vaddy_listen(&char(opts.bind.str), &char(cfg.https_port.str().str))
@@ -584,7 +584,7 @@ fn run_server(cfg Config, opts Options) ! {
 		}
 		s.reload_certificate()
 		if site.tls_mode == 'manual' && s.ctx == unsafe { nil } {
-			C.close(s.https_fd)
+			C.vaddy_close(s.https_fd)
 			return error('invalid manual TLS certificate/key')
 		}
 		s.watch(s.https_fd, 1)!
@@ -595,7 +595,7 @@ fn run_server(cfg Config, opts Options) ! {
 	}
 	defer {
 		for _, mut c in s.clients.clone() { s.close_client(mut c) }
-		if s.https_fd >= 0 { C.close(s.https_fd) }
+		if s.https_fd >= 0 { C.vaddy_close(s.https_fd) }
 		if s.ctx != unsafe { nil } { C.vaddy_tls_ctx_free(s.ctx) }
 	}
 	defer { s.stop_workers() }
@@ -612,12 +612,12 @@ fn (mut s Server) serve_events() ! {
 			s.drain_started = mono_ms()
 			s.watch(s.http_fd, 0) or {}
 			if s.http_fd >= 0 {
-				C.close(s.http_fd)
+				C.vaddy_close(s.http_fd)
 				s.http_fd = -1
 			}
 			if s.https_fd >= 0 {
 				s.watch(s.https_fd, 0) or {}
-				C.close(s.https_fd)
+				C.vaddy_close(s.https_fd)
 				s.https_fd = -1
 			}
 			if s.control_fd >= 0 { s.drain_incoming() }

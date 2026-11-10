@@ -56,7 +56,7 @@ Use an MSYS2 **UCRT64** shell with these packages:
 
 ```sh
 pacman -S --needed git make mingw-w64-ucrt-x86_64-gcc \
-    mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-re2 \
+    mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-re2 mingw-w64-ucrt-x86_64-zlib \
     mingw-w64-ucrt-x86_64-python
 sh ci/bootstrap-v.sh .tools/v
 make V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
@@ -65,7 +65,7 @@ make integration V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
 ```
 
 The result is `vaddy.exe`, using Winsock rather than WSL or a POSIX-emulation
-runtime. Run it with the matching UCRT64 OpenSSL DLLs on `PATH`; automatic
+runtime. Run it with the matching UCRT64 OpenSSL, RE2, zlib and C++ runtime DLLs on `PATH`; automatic
 certificate management also needs the UCRT64 `openssl.exe`. The CI job executes
 within that environment and does not assemble a redistributable Windows bundle.
 
@@ -107,11 +107,11 @@ The final BuildKit export contains only the binary. V's musl flag avoids using
 a glibc-specific GC archive or requiring musl's absent `getcontext` implementation.
 
 This is a dynamically linked **musl** executable, not a glibc executable or a
-fully static binary. On a matching Alpine system, install its OpenSSL runtime
+fully static binary. On a matching Alpine system, install its library runtimes
 and CA trust store:
 
 ```sh
-apk add --no-cache openssl ca-certificates
+apk add --no-cache openssl re2 libstdc++ zlib ca-certificates
 chmod +x ./vaddy-alpine-x86_64
 ./vaddy-alpine-x86_64 validate --config ./Caddyfile
 ```
@@ -149,3 +149,5 @@ host. The presence of the workflow is not a record of a successful hosted run.
 References: [MSYS2 GitHub Actions setup](https://www.msys2.org/docs/ci/),
 [Microsoft WSAPoll documentation](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsapoll),
 and [Alpine release branches](https://www.alpinelinux.org/releases/).
+
+See [third-party notices](THIRD_PARTY.md) for the Caddy HTML template and linked libraries.

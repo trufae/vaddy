@@ -21,7 +21,7 @@ def server(binary, engine, directives):
         root = Path(directory)
         port, tls_port = free_port(), free_port()
         config = root / "Caddyfile"
-        config.write_text(f"{{\n admin off\n http_port {port}\n https_port {tls_port}\n}}\nhttp://localhost {{\n{directives}\n}}\n")
+        config.write_text(f"{{\n admin off\n http_port {port}\n https_port {tls_port}\n}}\nhttp://localhost {{\n{directives}\n}}\n".replace("$LOG", str(root / "access.jsonl")))
         args = [binary, "run", "--config", str(config), "--adapter", "caddyfile"]
         if engine == "vaddy":
             args += ["--bind", "127.0.0.1", "--data", str(root / "data")]
@@ -165,8 +165,83 @@ def headers(vaddy, caddy):
         backend.server_close()
 
 
+class LogBackend(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *args):
+        pass
+
+    def do_POST(self):
+        if self.headers.get("Transfer-Encoding") == "chunked":
+            while True:
+                size = int(self.rfile.readline().strip(), 16)
+                if not size:
+                    self.rfile.readline()
+                    break
+                self.rfile.read(size + 2)
+        else:
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        self.do_GET()
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Set-Cookie", "secret-cookie")
+        if self.path == "/chunked":
+            self.send_header("Transfer-Encoding", "chunked")
+        else:
+            self.send_header("Content-Length", "9")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(b"5\r\nfirst\r\n4\r\nlast\r\n0\r\n\r\n" if self.path == "/chunked" else b"firstlast")
+
+
+def logging(vaddy, caddy):
+    backend = http.server.ThreadingHTTPServer(("127.0.0.1", 0), LogBackend)
+    backend.daemon_threads = True
+    threading.Thread(target=backend.serve_forever, daemon=True).start()
+    proxy = f"reverse_proxy 127.0.0.1:{backend.server_port}"
+    cases = [(proxy, "GET", "/", None), (proxy, "HEAD", "/", None),
+             (proxy, "GET", "/chunked", None), (proxy, "POST", "/", "abcdef"),
+             (proxy, "POST", "/", [b"abc", b"def"]),
+             ("redir * /new 308", "GET", "/", None),
+             ("redir * /new html", "HEAD", "/", None)]
+    try:
+        for directive, method, target, body in cases:
+            outputs = []
+            for engine, binary in [("vaddy", vaddy), ("caddy", caddy)]:
+                with server(binary, engine, 'log compat {\n output file "$LOG"\n format json\n}\n' + directive) as (port, root):
+                    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+                    request(conn, method, target, body=body, headers={"Authorization": "secret-auth", "Cookie": "secret-cookie"})
+                    conn.close()
+                    deadline = time.monotonic() + 3
+                    while True:
+                        text = (root / "access.jsonl").read_text()
+                        if text.strip():
+                            break
+                        assert time.monotonic() < deadline, "no access log"
+                        time.sleep(.01)
+                    assert "secret-auth" not in text and "secret-cookie" not in text
+                    record = json.loads(text)
+                    assert 1e9 < record.pop("ts") < 1e10
+                    assert 0 <= record.pop("duration") < 5
+                    assert int(record["request"].pop("remote_port")) > 0
+                    for name in ("Server", "Date", "Via"):
+                        record["resp_headers"].pop(name, None)
+                    outputs.append(record)
+            assert outputs[0] == outputs[1], (directive, method, target, outputs)
+        print(f"access-log compatibility: {len(cases)} cases")
+    finally:
+        backend.shutdown()
+        backend.server_close()
+
+
 if __name__ == "__main__":
     vaddy, caddy = map(lambda p: str(Path(p).resolve()), sys.argv[1:3])
     print("Reference:", subprocess.check_output([caddy, "version"], text=True).strip())
     redirects(vaddy, caddy)
     headers(vaddy, caddy)
+    logging(vaddy, caddy)

@@ -443,10 +443,11 @@ fn test_access_logs_once_per_request_and_aborted_response() ! {
 		response := receive(h.client)
 		lines := os.read_lines(path)!
 		record := json2.decode[AccessRecord](lines.last())!
-		assert record.status == 200 && record.complete
-		assert record.bytes_written == response.len
-		assert record.uri == '/quoted?x="secret"'
-		assert !lines.last().contains('Authorization') && !lines.last().contains('private')
+		assert record.status == 200
+		assert record.size == 2
+		assert response.ends_with('ok')
+		assert record.request.uri == '/quoted?x="secret"'
+		assert lines.last().contains('REDACTED') && !lines.last().contains('private')
 	}
 	assert os.read_lines(path)!.len == 2
 	send_text(h.client, 'GET /aborted HTTP/1.1\r\nHost: localhost\r\n\r\n')
@@ -458,7 +459,7 @@ fn test_access_logs_once_per_request_and_aborted_response() ! {
 	lines := os.read_lines(path)!
 	assert lines.len == 3
 	record := json2.decode[AccessRecord](lines[2])!
-	assert record.status == 200 && !record.complete
+	assert record.status == 200 && record.size == 7
 	mut redirect := harness()!
 	defer { redirect.close() }
 	redirect.s.cfg = h.s.cfg
@@ -494,7 +495,7 @@ fn test_reload_retains_inflight_config_and_rolls_back_invalid_resources() ! {
 	send_text(h.upstream, 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok')
 	h.pump()!
 	assert receive(h.client).contains('X-Generation: old\r\n')
-	assert json2.decode[AccessRecord](os.read_lines('${dir}/old.log')![0])!.uri == '/inflight'
+	assert json2.decode[AccessRecord](os.read_lines('${dir}/old.log')![0])!.request.uri == '/inflight'
 	assert old.users == 0
 	h.s.reap_runtimes()
 	assert h.s.retired.len == 0
@@ -502,7 +503,7 @@ fn test_reload_retains_inflight_config_and_rolls_back_invalid_resources() ! {
 	h.pump()!
 	response := receive(h.client)
 	assert response.starts_with('HTTP/1.1 307') && response.contains('X-Generation: new\r\n')
-	assert json2.decode[AccessRecord](os.read_lines('${dir}/new.log')![0])!.uri == '/next'
+	assert json2.decode[AccessRecord](os.read_lines('${dir}/new.log')![0])!.request.uri == '/next'
 }
 
 fn replace_config_for_test(mut s Server, input string) !bool {

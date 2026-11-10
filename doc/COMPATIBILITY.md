@@ -68,8 +68,9 @@ tracking them here does not imply that removing those restrictions is desirable.
 ### Logging
 
 - [ ] **CADDY-008 — Access-log schema:** match Caddy's JSON fields, structure,
-  units and byte accounting. Vaddy currently has its own schema; `ts` and
-  `duration_ms` use milliseconds, and `bytes_written` includes HTTP headers/framing.
+  units and byte accounting. Normal HTTP/1 cases are verified in CADDY-054.
+  Remaining: write-error fields, upgraded connections, abort timing, and metadata
+  for unsupported protocols/authentication/trusted proxies.
 - [ ] **CADDY-009 — Log destinations and rotation:** add file rotation, retention,
   network outputs and other standard output options beyond stderr/stdout/files.
 - [ ] **CADDY-010 — Log customization:** support named loggers, filtering,
@@ -207,3 +208,10 @@ tracking them here does not imply that removing those restrictions is desirable.
   request/proxy/response edits. Uses RE2 with explicit memory/capture/output limits.
   This adds a C++17/RE2 build and runtime dependency; CI and Alpine package lists
   have been updated. Cross-platform jobs must still run on their target systems.
+
+- [x] **CADDY-054 — Standard access-log schema (part of CADDY-008):** nested
+  request/response headers, default credential redaction, seconds-based timestamps
+  and durations, named logger identity, TLS details and decoded body byte counts.
+  HTTP/1 redirects, HEAD, fixed/chunked responses and fixed/chunked uploads are
+  compared with Caddy. Date/server/Via branding, timing and ephemeral ports are
+  explicitly normalized by the comparison suite.

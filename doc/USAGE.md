@@ -228,8 +228,8 @@ and their long Caddy names are expanded once.
 
 Targets use the same request placeholders as headers. Include `{uri}` to retain
 the original path and query; a fixed target does not automatically copy them.
-Redirects have an empty body, including for HEAD, and do not contact the backend.
-HTML redirects and arbitrary status-code placeholders are not supported.
+Ordinary redirects have an empty body. HTML redirects return a browser redirect
+page (HEAD suppresses the body). Redirects do not contact the backend.
 
 ## Access logs
 
@@ -251,17 +251,20 @@ mode 0600 for new files on POSIX. Sites using the same destination share a write
 worker writes are serialized and flushed after each record. File rotation and
 Caddy's log filtering/custom encoders are not implemented.
 
-Each valid request for a logging-enabled site produces one record when its
-response finishes or its connection closes. Fields are `ts` (Unix milliseconds),
-`remote_ip`, `method`, original `host` and `uri`, `status`, `bytes_written`,
-`duration_ms`, `upstream`, and `complete`. Bytes count plaintext HTTP bytes sent
-to the client, including headers and framing, excluding TLS overhead. Interrupted
-responses have `complete: false`; status is zero if no response was selected.
-WebSocket sessions are recorded when they end. TLS failures and malformed requests
-that cannot be assigned to a site do not produce site access records.
+Each valid request for a logging-enabled site produces one JSON record when its
+response finishes or its connection closes. Fields follow Caddy: `level`, `ts`
+(Unix seconds), `logger`, `msg`, nested `request`, `bytes_read`, `user_id`,
+`duration` (seconds), `size`, `status` and `resp_headers`. `size` and `bytes_read`
+count decoded body bytes, excluding HTTP headers and chunk framing. Request
+metadata includes peer/client IP, peer port, HTTP version, method, Host, URI,
+headers, transfer encoding, and TLS details when present. Credential headers
+(`Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`) are redacted.
+Use `log name { ... }` to choose the logger suffix. Automatic names are `log0`,
+`log1`, etc.; a bare `log` uses `http.log.access`.
 
-Headers, cookies and credentials are not recorded. URIs include query strings;
-avoid putting secrets in URLs. Operational messages still go to stderr separately.
+This replaces Vaddy's earlier flat JSON schema. Consumers must use `request.uri`
+instead of `uri`, `size` instead of wire-byte `bytes_written`, and `duration`
+instead of `duration_ms`. The old `complete` and `upstream` fields are removed.
 
 ## Configuration reload
 

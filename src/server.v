@@ -30,7 +30,12 @@ mut:
 	log_status int
 	log_started i64
 	log_upstream string
-	bytes_written i64
+	log_size i64
+	log_bytes_read i64
+	log_name string
+	log_empty_content_type bool
+	log_response_fields []Field
+	remote_port string
 	fd              int
 	counted         bool
 	backend         int = -1
@@ -178,6 +183,9 @@ fn (mut s Server) respond_options(mut c Connection, code int, reason string, bod
 		response_body = ''
 		header.write_string('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
 	}
+	c.log_empty_content_type = keepalive && content_type == ''
+	c.log_response_fields = buffer_header_fields(header).filter(it.lower !in ['content-length', 'connection'])
+	c.log_size = response_body.len
 	c.to_client.add(header.bytes())
 	if c.request.method != 'HEAD' { c.to_client.add(response_body.bytes()) }
 	c.local = true
@@ -204,7 +212,7 @@ fn (mut s Server) accept_clients(listener int, tls bool) {
 			continue
 		}
 		now := mono_ms()
-		mut c := &Connection{ fd: fd, ip: unsafe { cstring_to_vstring(&ip[0]) }, last_activity: now, started: now }
+		mut c := &Connection{ fd: fd, remote_port: C.vaddy_peer_port(fd).str(), ip: unsafe { cstring_to_vstring(&ip[0]) }, last_activity: now, started: now }
 		if tls {
 			c.tls = C.vaddy_tls_new(s.ctx, fd)
 			if c.tls == unsafe { nil } {
@@ -240,8 +248,11 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	c.have_request = true
 	c.access_logged = false
 	c.log_status = 0
-	c.log_started = c.started
-	c.bytes_written = 0
+	c.log_started = time.sys_mono_now()
+	c.log_size = 0
+	c.log_empty_content_type = false
+	c.log_bytes_read = 0
+	c.log_response_fields = []Field{}
 	c.log_upstream = ''
 	if s.runtime_store != unsafe { nil } { c.runtime = s.runtime_store.acquire() }
 	cfg := if c.runtime == unsafe { nil } { s.cfg } else { c.runtime.cfg }
@@ -253,9 +264,10 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		return false
 	}
 	site := cfg.sites[c.site]
+	c.log_name = site.log_name
 	c.access_log = logs[site.log_output] or { unsafe { nil } }
 	c.response_headers = site.response_headers.clone()
-	c.header_values = HeaderValues{uri: m.uri, method: m.method, fields: m.fields.clone(), host: m.host.all_before(':'), hostport: m.host, scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip}
+	c.header_values = HeaderValues{uri: m.uri, method: m.method, fields: m.fields.clone(), host: m.host.all_before(':'), hostport: m.host, scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip, remote_port: c.remote_port}
 	if c.tls == unsafe { nil } {
 		if m.uri.all_before('?').starts_with('/.well-known/acme-challenge/') && m.method in [
 			'GET',
@@ -357,6 +369,7 @@ fn (mut s Server) consume_request(mut c Connection) ! {
 	data := c.request_buffer.bytes()
 	limit := if data.len < c.to_backend.room() { data.len } else { c.to_backend.room() }
 	n := c.request.frame.consume(data[..limit])!
+	c.log_bytes_read = c.request.frame.body_bytes
 	c.to_backend.add(data[..n])
 	c.request_buffer.skip(n)
 }
@@ -365,6 +378,7 @@ fn (mut s Server) write_response_header(mut c Connection, m Message, close bool)
 	mut header := Buffer{}
 	header.response_header(m, [], close)
 	response_header_buffer(mut header, c.response_headers, c.header_values, m.status, false)!
+	if m.status >= 200 || m.status == 101 { c.log_response_fields = buffer_header_fields(header).filter(it.lower !in ['connection', 'transfer-encoding']) }
 	if c.to_client.room() < header.len() { return error('response header output exceeds buffer') }
 	c.to_client.add(header.bytes())
 }
@@ -407,6 +421,7 @@ fn (mut s Server) consume_response(mut c Connection) ! {
 		data := c.response_buffer.bytes()
 		limit := if data.len < c.to_client.room() { data.len } else { c.to_client.room() }
 		n := c.response.frame.consume(data[..limit])!
+		if !c.tunnel { c.log_size = c.response.frame.body_bytes }
 		c.to_client.add(data[..n])
 		c.response_buffer.skip(n)
 		if c.response.frame.done && c.response_buffer.len() > 0 {
@@ -516,7 +531,6 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 				}
 			}
 			if n > 0 {
-				c.bytes_written += n
 			c.to_client.skip(n)
 				progress = true
 			}

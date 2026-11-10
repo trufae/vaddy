@@ -32,6 +32,7 @@ mut:
 
 struct Site {
 mut:
+	log_name string
 	log_output     string
 	hosts          []string
 	plain          bool
@@ -272,6 +273,7 @@ fn parse_config(input string) !Config {
 	nodes := parse_nodes(tokens, mut cursor, false)!
 	mut cfg := Config{}
 	mut hosts := map[string]bool{}
+	mut log_count := 0
 	for idx, d in nodes {
 		if d.args.len == 0 {
 			if idx != 0 { return error('global block must be first') }
@@ -323,6 +325,8 @@ fn parse_config(input string) !Config {
 				'log' {
 					if site.log_output != '' { return error('duplicate log directive') }
 					site.log_output = parse_access_log(child)!
+					site.log_name = if child.args.len == 2 { child.args[1] } else if child.children.len > 0 { 'log${log_count}' } else { '' }
+					log_count++
 				}
 				'header' { site.response_headers << parse_headers(child, false)! }
 				'request_header' { site.request_headers << parse_headers(child, true)! }

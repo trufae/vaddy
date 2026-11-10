@@ -155,8 +155,8 @@ def run(binary):
                             assert request(conn=persistent)[1] == f'round-{i}'
                         persistent.close()
                         records = [json.loads(line) for line in (root / 'access.jsonl').read_text().splitlines()]
-                        assert len([r for r in records if r['uri'] == '/hold']) == 1
-                        assert all(r['complete'] for r in records if r['uri'] == '/hold')
+                        assert len([r for r in records if r['request']['uri'] == '/hold']) == 1
+                        assert all(r['size'] == 9 for r in records if r['request']['uri'] == '/hold')
                     finally:
                         backend.release.set()
                         for conn in (hold, persistent, ws):

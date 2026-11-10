@@ -50,3 +50,6 @@ fn C.vaddy_upstream_tls(voidptr, int, &char) voidptr
 fn C.vaddy_upstream_handshake(voidptr) int
 
 fn C.vaddy_take_reload() int
+
+fn C.vaddy_peer_port(i64) int
+fn C.vaddy_tls_details(voidptr, &int, &int, &int, &char, int, &char, int)

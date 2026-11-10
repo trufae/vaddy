@@ -149,9 +149,9 @@ def run(binary):
                 with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
                     list(pool.map(parallel_request, range(40)))
                 records = [json.loads(line) for line in (root / 'access.jsonl').read_text().splitlines()]
-                parallel = [r for r in records if r['uri'].startswith('/parallel/')]
+                parallel = [r for r in records if r['request']['uri'].startswith('/parallel/')]
                 assert len(parallel) == 40
-                assert all(r['status'] == 308 and r['complete'] for r in parallel)
+                assert all(r['status'] == 308 and r['size'] == 0 for r in parallel)
                 print("PASS: TCP, verified TLS, supplied routes, redirects, headers, keep-alive, streaming, uploads, malformed framing")
             finally:
                 proc.terminate()

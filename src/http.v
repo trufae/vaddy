@@ -38,6 +38,7 @@ enum BodyKind {
 struct Framing {
 mut:
 	kind          BodyKind
+	body_bytes i64
 	remaining     i64
 	stage         int
 	line          string
@@ -212,10 +213,11 @@ fn parse_message_reuse(raw string, request bool, head bool, fields []Field) !Mes
 // Consume exactly one framed body, preserving any pipelined bytes for the next message.
 fn (mut f Framing) consume(data []u8) !int {
 	if f.done { return 0 }
-	if f.kind in [.eof, .tunnel] { return data.len }
+	if f.kind in [.eof, .tunnel] { f.body_bytes += data.len; return data.len }
 	if f.kind == .length {
 		n := int(if f.remaining < data.len { f.remaining } else { data.len })
 		f.remaining -= n
+		f.body_bytes += n
 		f.done = f.remaining == 0
 		return n
 	}
@@ -265,6 +267,7 @@ fn (mut f Framing) consume(data []u8) !int {
 			1 {
 				n := int(if f.remaining < data.len - i { f.remaining } else { data.len - i })
 				i += n
+				f.body_bytes += n
 				f.remaining -= n
 				if f.remaining == 0 {
 					f.stage = 2

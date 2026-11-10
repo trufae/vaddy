@@ -7,7 +7,7 @@ The checked-in hostname, `example.org`, is a placeholder for a domain you contro
 ## Build and run
 
 Dependencies: a recent V compiler with `json2`, C and C++17 compilers, `pkg-config`,
-OpenSSL 3 and RE2 development libraries, and the `openssl` executable. Tested with
+OpenSSL 3, RE2 and zlib development libraries, and the `openssl` executable. Tested with
 V `0.5.2 b7b4dd4` on arm64 macOS. The event backend uses epoll on Linux, kqueue
 on macOS/BSD, and Winsock polling on Windows. See [platform builds and CI](BUILDING.md)
 for the pinned compiler, Windows setup, Alpine output, and validation coverage.
@@ -245,11 +245,19 @@ example.org {
 }
 ```
 
-`output stdout` and `output stderr` are also supported. Parent directories must
-already exist and be writable. Files are opened in append mode at startup and configuration reload, with
-mode 0600 for new files on POSIX. Sites using the same destination share a writer;
-worker writes are serialized and flushed after each record. File rotation and
-Caddy's log filtering/custom encoders are not implemented.
+`output stdout`, `output stderr` and `output discard` are supported. File outputs
+create missing parent directories (0700) and append to files (0600) by default.
+Configure `mode` and `dir_mode` inside the output block. By default, files roll at
+100 MiB, gzip old files, and retain at most 10 backups for 90 days. Options include
+`roll_size`, `roll_keep`, `roll_keep_for`, `roll_interval`, `roll_disabled`,
+`roll_uncompressed`, `roll_compression gzip|none` and `roll_local_time`. Sizes round
+up to MiB; retention durations round up to days, as in Caddy. Compression streams
+through a fixed-size buffer. Interval rolls happen on the next log write.
+
+Workers and overlapping reload generations serialize writes. Each file write
+reopens the active pathname under the shared lock, so rotations and external
+file replacement cannot strand records in a renamed file. Compression runs
+synchronously; a large rotation can briefly delay logging and request processing.
 
 Each valid request for a logging-enabled site produces one JSON record when its
 response finishes or its connection closes. Fields follow Caddy: `level`, `ts`

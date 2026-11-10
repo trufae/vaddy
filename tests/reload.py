@@ -132,7 +132,7 @@ def run(binary):
                         assert request('/old')[:3] == (308, 'new', '/new-new')
                         # Failed parsing, resource setup and listener changes leave all workers on the current config.
                         reload('invalid', False)
-                        reload(contents('bad', output=root / 'missing/no.log'), False)
+                        reload(contents('bad', output=root / 'access.jsonl/child'), False)
                         reload(contents('bad', listen=free_port()), False)
                         bad_tls = contents('bad').replace(f'reverse_proxy 127.0.0.1:{backend.server_port} {{',
                             f'reverse_proxy https://127.0.0.1:{backend.server_port} {{\n transport http {{\n tls_trust_pool file "{root / "missing-ca.pem"}"\n }}')

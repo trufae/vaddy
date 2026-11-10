@@ -485,7 +485,7 @@ fn test_reload_retains_inflight_config_and_rolls_back_invalid_resources() ! {
 	assert receive(h.upstream).contains('/inflight')
 	old := h.s.runtime_store.current
 	assert old.users == 1
-	for input in ['invalid', 'http://localhost {\n log {\n output file "${dir}/missing/no.log"\n }\n redir * /bad\n}', 'localhost {\n tls internal\n redir * /bad\n}'] {
+	for input in ['invalid', 'http://localhost {\n log {\n output file "${dir}/old.log/child"\n }\n redir * /bad\n}', 'localhost {\n tls internal\n redir * /bad\n}'] {
 		if _ := replace_config_for_test(mut h.s, input) { assert false }
 		assert h.s.runtime_store.current == old
 	}

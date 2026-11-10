@@ -1,7 +1,7 @@
 # Platform builds and CI
 
 Run these commands from the repository root. The native build requires C and C++17
-compilers, V, `pkg-config`, OpenSSL and RE2 development libraries, and the `openssl`
+compilers, V, `pkg-config`, OpenSSL, RE2 and zlib development libraries, and the `openssl`
 executable. Go is only needed for the optional comparison/benchmark drivers;
 the three-server comparison also requires Rust/Cargo, CMake, and a C/C++ compiler
 for Raddy's release build. See [benchmark setup](TESTING.md).

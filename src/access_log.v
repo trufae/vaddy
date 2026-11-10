@@ -12,6 +12,8 @@ mut:
 	file os.File
 	owned bool
 	shared_mutex bool
+	options LogOptions
+	opened i64
 }
 
 struct LogTLS {
@@ -86,23 +88,20 @@ fn request_log(c &Connection) LogRequest {
 	}
 }
 
-fn parse_access_log(d Directive) !string {
+fn parse_access_log(d Directive) !LogOptions {
 	if d.args.len !in [1, 2] { return error('expected log [name] { output ... }') }
-	mut output := 'stderr'
-	mut seen := false
+	mut opts := LogOptions{}
+	mut seen := map[string]bool{}
 	for child in d.children {
-		if child.children.len > 0 { return error('nested log options are unsupported') }
-		if child.args == ['format', 'json'] { continue }
-		if child.args.len >= 2 && child.args[0] == 'output' && !seen {
-			seen = true
-			if child.args.len == 2 && child.args[1] in ['stdout', 'stderr'] {
-				output = child.args[1]
-			} else if child.args.len == 3 && child.args[1] == 'file' && child.args[2] != '' {
-				output = 'file:' + os.abs_path(child.args[2])
-			} else { return error('log output must be stdout, stderr or file PATH') }
-		} else { return error('unsupported log option') }
+		if child.args.len == 0 { return error('empty log option') }
+		name := child.args[0]
+		if name in seen { return error('duplicate log option ${name}') }
+		seen[name] = true
+		if child.args == ['format', 'json'] && child.children.len == 0 { continue }
+		if name == 'output' { parse_log_output(child, mut opts)! }
+		else { return error('unsupported log option ${name}') }
 	}
-	return output
+	return opts
 }
 
 fn prepare_access_logs(cfg Config) !map[string]&AccessLog {
@@ -111,13 +110,18 @@ fn prepare_access_logs(cfg Config) !map[string]&AccessLog {
 	defer { if !complete { close_access_logs(logs) } }
 	for site in cfg.sites {
 		output := site.log_output
-		if output == '' || output in logs { continue }
+		if output == '' { continue }
+		if previous := logs[output] {
+			if previous.options != site.log_options { return error('conflicting options for shared log output') }
+			continue
+		}
 		mut file := match output {
 			'stderr' { os.stderr() }
 			'stdout' { os.stdout() }
-			else { os.open_file(output.trim_string_left('file:'), 'a', 0o600)! }
+			'discard' { os.File{} }
+			else { open_log_file(site.log_options)! }
 		}
-		logs[output] = &AccessLog{file: file, owned: output.starts_with('file:')}
+		logs[output] = &AccessLog{file: file, owned: output.starts_with('file:'), options: site.log_options, opened: time.sys_mono_now()}
 	}
 	complete = true
 	return logs
@@ -151,8 +155,7 @@ fn (mut s Server) log_access(mut c Connection, _complete bool) {
 	mut logger := c.access_log
 	logger.mutex.lock()
 	defer { logger.mutex.unlock() }
-	logger.file.writeln(line) or { eprintln('vaddy: access log write failed: ${err}') }
-	logger.file.flush()
+	logger.write_line(line) or { eprintln('vaddy: access log write failed: ${err}') }
 }
 
 fn share_log_mutex(logs map[string]&AccessLog, mutex &sync.Mutex) {

@@ -73,6 +73,9 @@ tracking them here does not imply that removing those restrictions is desirable.
   for unsupported protocols/authentication/trusted proxies.
 - [ ] **CADDY-009 — Log destinations and rotation:** add file rotation, retention,
   network outputs and other standard output options beyond stderr/stdout/files.
+  File size/interval rotation, gzip, retention and discard are implemented in
+  CADDY-055. Remaining: network writers, Zstandard, scheduled/time-based background
+  rolling, custom backup layouts and directory-mode inheritance.
 - [ ] **CADDY-010 — Log customization:** support named loggers, filtering,
   redaction, custom fields, conditional logging, levels and additional encoders.
 
@@ -215,3 +218,10 @@ tracking them here does not imply that removing those restrictions is desirable.
   HTTP/1 redirects, HEAD, fixed/chunked responses and fixed/chunked uploads are
   compared with Caddy. Date/server/Via branding, timing and ephemeral ports are
   explicitly normalized by the comparison suite.
+
+- [x] **CADDY-055 — File rotation and retention (part of CADDY-009):** default
+  100 MiB rotation, gzip, backup count/age retention, file/directory modes,
+  write-triggered intervals, disabled rotation, discard output, and parent creation.
+  Tests verify compression, retention, unrelated-file preservation and overlapping
+  generation writers. Compression is synchronous and interval timers are lazy;
+  these scheduling differences remain explicitly outside the parity claim.

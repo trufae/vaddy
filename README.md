@@ -22,7 +22,7 @@ unsupported directives fail validation.
 
 ## Get started
 
-Requires V, a C compiler, `pkg-config`, OpenSSL 3 development libraries, and the
+Requires V, C and C++17 compilers, `pkg-config`, OpenSSL 3 and RE2 development libraries, and the
 `openssl` executable. The default build uses Clang and Boehm GC.
 
 Configure your domain and backend in [Caddyfile](Caddyfile). A minimal site looks

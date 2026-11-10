@@ -48,7 +48,8 @@ tracking them here does not imply that removing those restrictions is desirable.
   route and proxy edits. Implemented and verified for supported routes in CADDY-052;
   nested routing and informational-response edge cases still need coverage.
 - [ ] **CADDY-004 — Header transformations:** support regex value replacements
-  and wildcard header names.
+  and wildcard header names. Implemented with RE2 and Go-style substitutions;
+  resource limits and uncommon Go/RE2 dialect differences remain to audit (CADDY-053).
 - [ ] **CADDY-005 — Conditional headers:** support matcher tokens directly on
   header directives and response conditions in header blocks. Path matchers and
   status/header response conditions are implemented; broader request matcher types
@@ -200,3 +201,9 @@ tracking them here does not imply that removing those restrictions is desirable.
   phases, path matchers, response status/header conditions, and request Host edits.
   Compared with Caddy in 22 cases. Framing fields remain protected, including when
   deleting `*`; this deliberate restriction is not claimed as Caddy equivalence.
+
+- [x] **CADDY-053 — Regex header replacements (part of CADDY-004):** numeric and
+  named captures, literal dollars, global/empty matches, dynamic patterns and
+  request/proxy/response edits. Uses RE2 with explicit memory/capture/output limits.
+  This adds a C++17/RE2 build and runtime dependency; CI and Alpine package lists
+  have been updated. Cross-platform jobs must still run on their target systems.

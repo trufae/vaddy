@@ -383,7 +383,7 @@ fn test_header_edits_on_proxy_keepalive_and_local_response() ! {
 }
 
 fn test_header_edit_validation_and_output_limits() ! {
-	for directive in ['header Content-Length 5', 'header +Connection close', 'request_header ?X-Foo bar', 'header Bad:Name x', 'header X-Test one two', 'header X-Test "bad\rvalue"'] {
+	for directive in ['header Content-Length 5', 'header +Connection close', 'request_header ?X-Foo bar', 'header Bad:Name x', 'header X-Test "[" replacement', 'header X-Test "bad\rvalue"'] {
 		if _ := parse_config('http://localhost {\n ${directive}\n reverse_proxy localhost:8001\n}') { assert false, directive }
 	}
 	mut b := Buffer{}

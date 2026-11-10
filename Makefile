@@ -21,10 +21,14 @@ endif
 .PHONY: all test integration bench bench-workers caddy-bench raddy-bench compare alpine alpine-x86_64 fmt clean install
 all: $(TARGET)
 
-$(TARGET): $(wildcard src/*.v) $(wildcard src/*.h) v.mod
+.build/regex.o: src/regex.cc src/regex.h
+	mkdir -p .build
+	$(CXX) -std=c++17 -O2 $(shell pkg-config --cflags re2) -c src/regex.cc -o $@
+
+$(TARGET): .build/regex.o $(wildcard src/*.v) $(wildcard src/*.h) v.mod
 	$(V) $(VFLAGS) -d use_openssl -o $@ src
 
-test:
+test: .build/regex.o
 	$(V) $(VTESTFLAGS) -d use_openssl test src
 
 integration: $(TARGET)
@@ -36,16 +40,16 @@ integration: $(TARGET)
 compatibility: $(TARGET)
 	python3 tests/compatibility.py ./$(TARGET) ./caddy-bench
 
-bench:
+bench: .build/regex.o
 	VADDY_BENCH=1 $(V) -cc clang -gc boehm -cflags '-O3' -d use_openssl src/server_test.v
 
 bench-workers:
 	python3 tests/ipc_bench.py
 
-caddy-bench:
+caddy-bench: .build/regex.o
 	cd caddy && go build -trimpath -ldflags '-s -w' -o ../caddy-bench ./cmd/caddy
 
-raddy-bench:
+raddy-bench: .build/regex.o
 	cd raddy && cargo build --release --locked --bin raddy
 	cp raddy/target/release/raddy$(EXEEXT) raddy-bench$(EXEEXT)
 
@@ -67,4 +71,4 @@ install: $(TARGET)
 	install -m 755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/$(TARGET)
 
 clean:
-	rm -f vaddy vaddy.exe
+	rm -f vaddy vaddy.exe .build/regex.o

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 ARG ALPINE_IMAGE=alpine:3.24
 FROM ${ALPINE_IMAGE} AS builder
-RUN apk add --no-cache build-base clang git make pkgconf openssl-dev openssl \
+RUN apk add --no-cache build-base clang git make pkgconf openssl-dev re2-dev openssl \
     ca-certificates python3
 
 WORKDIR /build
@@ -25,7 +25,7 @@ RUN test "$(uname -m)" = x86_64 \
 
 # Check the binary against the documented runtime packages, without build tools.
 FROM ${ALPINE_IMAGE} AS runtime-check
-RUN apk add --no-cache openssl ca-certificates
+RUN apk add --no-cache openssl re2 libstdc++ ca-certificates
 COPY --from=builder /out/vaddy-alpine-x86_64 /usr/local/bin/vaddy
 COPY Caddyfile /tmp/Caddyfile
 RUN vaddy validate --config /tmp/Caddyfile

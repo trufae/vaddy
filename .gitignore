@@ -13,3 +13,5 @@
 /src/*_test.exe
 /tests/__pycache__/
 /.vaddy-data/
+
+/.build/

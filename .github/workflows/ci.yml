@@ -30,12 +30,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang make pkg-config libssl-dev openssl python3
+          sudo apt-get install -y clang make pkg-config libssl-dev libre2-dev openssl python3
 
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
-          brew install pkgconf openssl@3
+          brew install pkgconf openssl@3 re2
           echo "$(brew --prefix openssl@3)/bin" >> "$GITHUB_PATH"
 
       - name: Install Windows dependencies
@@ -49,6 +49,7 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-re2
             mingw-w64-ucrt-x86_64-python
 
       - name: Build pinned V compiler (Unix)

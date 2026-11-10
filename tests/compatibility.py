@@ -117,6 +117,15 @@ def headers(vaddy, caddy):
     backend.daemon_threads = True
     threading.Thread(target=backend.serve_forever, daemon=True).start()
     cases = [
+        ('header >X-Value "(up)(stream)" "$2-$1"', ""),
+        ('header >X-Value "(?P<part>up)stream" "${part}-$0-$$"', ""),
+        ('header >X-Value "(up)" "$1suffix-${1}suffix"', ""),
+        ('header >X-Value "" "-"', ""),
+        ('header >X-Value "x*" "-"', ""),
+        ('header >X-Value "[a-z]+" "replaced"', ""),
+        ('header >X-Value "{header.X-Pattern}" "replaced"', ""),
+        ("", 'header_down X-Value "(up)(stream)" "$2-$1"'),
+        ('request_header X-Value "(ab)(cd)" "$2-$1"', ""),
         ("header X-Value immediate", ""),
         ("header >X-Value deferred", ""),
         ("header X-Value site", "header_down X-Value proxy"),
@@ -147,7 +156,7 @@ def headers(vaddy, caddy):
             for engine, binary in [("vaddy", vaddy), ("caddy", caddy)]:
                 with server(binary, engine, config) as (port, _):
                     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
-                    outputs.append(request(conn, "GET", "/test"))
+                    outputs.append(request(conn, "GET", "/test", headers={"X-Value": "abcd", "X-Pattern": "["}))
                     conn.close()
             assert outputs[0] == outputs[1], (directives, proxy, outputs)
         print(f"header compatibility: {len(cases)} cases")

@@ -6,8 +6,8 @@ The checked-in hostname, `example.org`, is a placeholder for a domain you contro
 
 ## Build and run
 
-Dependencies: a recent V compiler with `json2`, a C compiler, `pkg-config`,
-OpenSSL 3 development libraries, and the `openssl` executable. Tested with
+Dependencies: a recent V compiler with `json2`, C and C++17 compilers, `pkg-config`,
+OpenSSL 3 and RE2 development libraries, and the `openssl` executable. Tested with
 V `0.5.2 b7b4dd4` on arm64 macOS. The event backend uses epoll on Linux, kqueue
 on macOS/BSD, and Winsock polling on Windows. See [platform builds and CI](BUILDING.md)
 for the pinned compiler, Windows setup, Alpine output, and validation coverage.
@@ -198,6 +198,11 @@ Values and field names support request placeholders, including `{header.Name}`,
 `{remote_host}` and `{upstream_hostport}`. Substitution is a single pass. Unknown
 placeholders remain literal. Framing/connection headers and trailers remain
 protected; wildcard deletion preserves fields needed to frame the message.
+Regex replacement uses `header >Name "pattern" "replacement"` or proxy
+`header_up`/`header_down Name "pattern" "replacement"`. RE2 supplies bounded,
+non-backtracking matching, with Go-style `$1`, `${name}` and `$$` substitutions.
+A replacement on `*` applies to all editable fields. Regex compilation is bounded
+to 8 MiB and 1024 capture groups; output expansion is bounded like other edits.
 Output headers are limited to 16 KiB and 128 fields.
 
 ## Custom redirects

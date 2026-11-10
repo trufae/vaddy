@@ -11,6 +11,7 @@ struct HeaderEdit {
 	name string
 	lower string
 	value string
+	search string
 	action u8
 	group string
 	deferred bool
@@ -84,7 +85,7 @@ fn protected_header(name string) bool {
 }
 
 fn parse_header_edit(args []string, nested bool, request bool) !HeaderEdit {
-	if nested || args.len == 0 || args.len > 2 { return error('expected header field [value]') }
+	if nested || args.len == 0 || args.len > 3 { return error('expected header field [value [replacement]]') }
 	mut name := args[0].trim_string_right(':')
 	mut action := u8(`=`)
 	if name.len > 0 && name[0] in [u8(`+`), `-`, `?`, `>`] {
@@ -96,9 +97,11 @@ fn parse_header_edit(args []string, nested bool, request bool) !HeaderEdit {
 		return error('cannot edit framing or hop-by-hop header: ${name}')
 	}
 	if request && action == `?` { return error('default headers are response-only') }
-	value := if args.len == 2 { args[1] } else { '' }
+	search := if args.len == 3 && action !in [u8(`+`), `-`, `?`] { args[1] } else { '' }
+	value := if args.len == 3 && action !in [u8(`+`), `-`, `?`] { args[2] } else if args.len >= 2 { args[1] } else { '' }
+	if search != '' && !search.contains('{') && C.vaddy_regex_valid(&char(search.str)) == 0 { return error('invalid regular expression') }
 	if invalid_controls(value, true) || value.len > header_limit { return error('invalid header value') }
-	return HeaderEdit{name: name, lower: lower, value: value, action: if action == `>` { u8(`=`) } else { action }, deferred: !request && action in [u8(`>`), `-`, `?`]}
+	return HeaderEdit{name: name, lower: lower, value: value, search: search, action: if args.len == 3 && action !in [u8(`+`), `-`, `?`] { u8(`r`) } else if action == `>` { u8(`=`) } else { action }, deferred: !request && action in [u8(`>`), `-`, `?`]}
 }
 
 fn parse_headers(d Directive, request bool) ![]HeaderEdit {
@@ -265,7 +268,7 @@ fn apply_header_group(mut fields []Field, edits []HeaderEdit, values HeaderValue
 	if edits.len == 0 || !header_edit_matches(edits[0], fields, values, status) { return }
 	// Caddy groups operations by type, independently of their textual order.
 	if edits.any(it.action == `-` && it.lower == '*') { fields = fields.filter(protected_header(it.lower)) }
-	for action in [u8(`+`), `=`, `-`, `?`] {
+	for action in [u8(`+`), `=`, `-`, `r`, `?`] {
 		for original in edits {
 			if original.action != action { continue }
 			name := expand_header(original.name, values)!
@@ -275,6 +278,19 @@ fn apply_header_group(mut fields []Field, edits []HeaderEdit, values HeaderValue
 			if action == `-` {
 				if edit.lower == '*' { continue }
 				fields = fields.filter(protected_header(it.lower) || !header_pattern(edit.lower, it.lower))
+				continue
+			}
+			if action == `r` {
+				pattern := expand_header(edit.search, values)!
+				replacement := expand_header(edit.value, values)!
+				// Invalid dynamically expanded patterns leave values unchanged, as in Caddy.
+				if C.vaddy_regex_valid(&char(pattern.str)) == 0 { continue }
+				for i, field in fields {
+					if field.lower != edit.lower && edit.lower != '*' { continue }
+					if protected_header(field.lower) { continue }
+					value := regex_replace(pattern, replacement, field.value)!
+					fields[i] = Field{...field, value: value}
+				}
 				continue
 			}
 			if action == `=` { fields = fields.filter(it.lower != edit.lower) }

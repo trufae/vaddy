@@ -1,7 +1,7 @@
 # Platform builds and CI
 
-Run these commands from the repository root. The native build requires a C
-compiler, V, `pkg-config`, OpenSSL development libraries, and the `openssl`
+Run these commands from the repository root. The native build requires C and C++17
+compilers, V, `pkg-config`, OpenSSL and RE2 development libraries, and the `openssl`
 executable. Go is only needed for the optional comparison/benchmark drivers;
 the three-server comparison also requires Rust/Cargo, CMake, and a C/C++ compiler
 for Raddy's release build. See [benchmark setup](TESTING.md).
@@ -56,7 +56,7 @@ Use an MSYS2 **UCRT64** shell with these packages:
 
 ```sh
 pacman -S --needed git make mingw-w64-ucrt-x86_64-gcc \
-    mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-openssl \
+    mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-re2 \
     mingw-w64-ucrt-x86_64-python
 sh ci/bootstrap-v.sh .tools/v
 make V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'

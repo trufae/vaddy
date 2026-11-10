@@ -1,5 +1,7 @@
 module main
 
+import net.urllib
+
 struct HeaderEdit {
 	name string
 	lower string
@@ -10,6 +12,9 @@ struct HeaderEdit {
 struct HeaderValues {
 mut:
 	uri string
+	method string
+	fields []Field
+	remote_port string
 	host string
 	hostport string
 	scheme string
@@ -18,11 +23,52 @@ mut:
 }
 
 fn supported_placeholders(value string) bool {
-	mut rest := value
-	for name in ['uri', 'host', 'hostport', 'scheme', 'remote_host', 'upstream_hostport'] {
-		rest = rest.replace('{${name}}', '')
+	return !invalid_controls(value, true)
+}
+
+fn placeholder_value(name string, values HeaderValues) ?string {
+	mut key := name.trim_string_left('http.request.')
+	key = match key {
+		'uri.path' { 'path' }
+		'uri.query' { 'query' }
+		'uri.prefixed_query' { '?query' }
+		'remote.host' { 'remote_host' }
+		'remote.port' { 'remote_port' }
+		'http.reverse_proxy.upstream.hostport' { 'upstream_hostport' }
+		else { key }
 	}
-	return !rest.contains('{') && !rest.contains('}')
+	path := urllib.path_unescape(values.uri.all_before('?')) or { values.uri.all_before('?') }
+	query := if values.uri.contains('?') { values.uri.all_after('?') } else { '' }
+	match key {
+		'uri', 'orig_uri' { return values.uri }
+		'path', 'orig_uri.path' { return path }
+		'query', 'orig_uri.query' { return query }
+		'?query' { return if query == '' { '' } else { '?' + query } }
+		'host' { return values.host }
+		'hostport' { return values.hostport }
+		'port' { return if values.hostport.contains(':') { values.hostport.all_after_last(':') } else { '' } }
+		'scheme' { return values.scheme }
+		'method', 'orig_method' { return values.method }
+		'remote_host', 'client_ip', 'http.vars.client_ip' { return values.remote_host }
+		'remote_port' { return values.remote_port }
+		'remote' { return values.remote_host + ':' + values.remote_port }
+		'upstream_hostport' { return values.upstream_hostport }
+		else {}
+	}
+	if key.starts_with('header.') {
+		field := key.trim_string_left('header.').to_lower()
+		return values.fields.filter(it.lower == field).map(it.value).join(',')
+	}
+	if key.starts_with('query.') || key.starts_with('uri.query.') {
+		field := key.trim_string_left('uri.').trim_string_left('query.')
+		for pair in query.split('&') {
+			if (urllib.query_unescape(pair.all_before('=')) or { '' }) == field {
+				return urllib.query_unescape(pair.all_after('=')) or { '' }
+			}
+		}
+		return ''
+	}
+	return none
 }
 
 fn parse_header_edit(args []string, nested bool, request bool) !HeaderEdit {
@@ -59,6 +105,12 @@ fn parse_headers(d Directive, request bool) ![]HeaderEdit {
 }
 
 fn expand_header(value string, values HeaderValues) !string {
+	output := expand_placeholders(value, values)!
+	if invalid_controls(output, true) { return error('invalid expanded header') }
+	return output
+}
+
+fn expand_placeholders(value string, values HeaderValues) !string {
 	// Single pass: request values are never reinterpreted as placeholders.
 	mut output := ''
 	mut start := 0
@@ -68,21 +120,12 @@ fn expand_header(value string, values HeaderValues) !string {
 			output += value[start..end]
 			start = end
 		} else {
-			end := value.index_after('}', start) or { return error('invalid placeholder') }
-			output += match value[start + 1..end] {
-				'uri' { values.uri }
-				'host' { values.host }
-				'hostport' { values.hostport }
-				'scheme' { values.scheme }
-				'remote_host' { values.remote_host }
-				'upstream_hostport' { values.upstream_hostport }
-				else { return error('unsupported placeholder') }
-			}
+			end := value.index_after('}', start) or { output += value[start..]; break }
+			output += placeholder_value(value[start + 1..end], values) or { value[start..end + 1] }
 			start = end + 1
 		}
 		if output.len > header_limit { return error('expanded header too large') }
 	}
-	if invalid_controls(output, true) { return error('invalid expanded header') }
 	return output
 }
 

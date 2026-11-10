@@ -383,7 +383,7 @@ fn test_header_edits_on_proxy_keepalive_and_local_response() ! {
 }
 
 fn test_header_edit_validation_and_output_limits() ! {
-	for directive in ['header Content-Length 5', 'header +Connection close', 'request_header -Host', 'request_header +Host evil', 'header Bad:Name x', 'header X-Test {unknown}', 'header X-Test one two', 'header X-Test "bad\rvalue"'] {
+	for directive in ['header Content-Length 5', 'header +Connection close', 'request_header -Host', 'request_header +Host evil', 'header Bad:Name x', 'header X-Test one two', 'header X-Test "bad\rvalue"'] {
 		if _ := parse_config('http://localhost {\n ${directive}\n reverse_proxy localhost:8001\n}') { assert false, directive }
 	}
 	mut b := Buffer{}
@@ -402,7 +402,7 @@ fn edit_headers_for_test(mut b Buffer, edits []HeaderEdit, values HeaderValues) 
 fn test_custom_redirects_precedence_and_head() ! {
 	for method in ['GET', 'HEAD', 'POST'] {
 		mut h := harness()!
-		h.s.cfg = parse_config('http://localhost {\n header X-Site yes\n reverse_proxy localhost:8001\n @old path /old /old/*\n redir @old https://new.example{uri} permanent\n handle /local {\n header X-Local yes\n redir /target 307\n }\n}')!
+		h.s.cfg = parse_config('http://localhost {\n header X-Site yes\n reverse_proxy localhost:8001\n @old path /old /old/*\n redir @old https://new.example{uri} permanent\n handle /local {\n header X-Local yes\n redir * /target 307\n }\n}')!
 		send_text(h.client, '${method} /old?q=1 HTTP/1.1\r\nHost: localhost\r\n\r\n')
 		h.pump()!
 		response := receive(h.client)
@@ -415,7 +415,7 @@ fn test_custom_redirects_precedence_and_head() ! {
 	}
 	mut h := harness()!
 	defer { h.close() }
-	h.s.cfg = parse_config('http://localhost {\n handle /local {\n header X-Local yes\n redir /target 307\n }\n}')!
+	h.s.cfg = parse_config('http://localhost {\n handle /local {\n header X-Local yes\n redir * /target 307\n }\n}')!
 	send_text(h.client, 'GET /local HTTP/1.1\r\nHost: localhost\r\n\r\n')
 	h.pump()!
 	response := receive(h.client)
@@ -484,11 +484,11 @@ fn test_reload_retains_inflight_config_and_rolls_back_invalid_resources() ! {
 	assert receive(h.upstream).contains('/inflight')
 	old := h.s.runtime_store.current
 	assert old.users == 1
-	for input in ['invalid', 'http://localhost {\n log {\n output file "${dir}/missing/no.log"\n }\n redir /bad\n}', 'localhost {\n tls internal\n redir /bad\n}'] {
+	for input in ['invalid', 'http://localhost {\n log {\n output file "${dir}/missing/no.log"\n }\n redir * /bad\n}', 'localhost {\n tls internal\n redir * /bad\n}'] {
 		if _ := replace_config_for_test(mut h.s, input) { assert false }
 		assert h.s.runtime_store.current == old
 	}
-	h.s.replace_config('http://localhost {\n header X-Generation new\n log {\n output file "${dir}/new.log"\n }\n redir /new 307\n}')!
+	h.s.replace_config('http://localhost {\n header X-Generation new\n log {\n output file "${dir}/new.log"\n }\n redir * /new 307\n}')!
 	h.s.reap_runtimes()
 	assert h.s.retired.len == 1 && old.users == 1
 	send_text(h.upstream, 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok')
@@ -508,4 +508,19 @@ fn test_reload_retains_inflight_config_and_rolls_back_invalid_resources() ! {
 fn replace_config_for_test(mut s Server, input string) !bool {
 	s.replace_config(input)!
 	return true
+}
+
+fn test_redirect_body_drain_pipeline_and_dynamic_codes() ! {
+	mut h := harness()!
+	defer { h.close() }
+	h.s.cfg = parse_config('http://localhost {\n redir * /new {query.code}\n}')!
+	send_text(h.client, 'POST /old?code=307 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 3\r\n\r\nabcGET /old?code=308 HTTP/1.1\r\nHost: localhost\r\n\r\n')
+	h.pump()!
+	response := receive(h.client)
+	assert response.count('HTTP/1.1') == 2
+	assert response.contains('HTTP/1.1 307') && response.contains('HTTP/1.1 308')
+	assert !h.c.dead
+	send_text(h.client, 'GET /old?code=oops HTTP/1.1\r\nHost: localhost\r\n\r\n')
+	h.pump()!
+	assert receive(h.client).starts_with('HTTP/1.1 500')
 }

@@ -154,24 +154,35 @@ fn (mut s Server) close_client(mut c Connection) {
 }
 
 fn (mut s Server) respond(mut c Connection, code int, reason string, body string, extra string) {
+	s.respond_options(mut c, code, reason, body, extra, false, 'text/plain; charset=utf-8')
+}
+
+fn (mut s Server) respond_options(mut c Connection, code int, reason string, body string, extra string, keepalive bool, content_type string) {
 	s.close_backend(mut c)
 	c.to_client.clear()
 	c.to_backend.clear()
 	c.log_status = code
 	mut response_body := body
 	mut header := Buffer{}
-	header.write_string('HTTP/1.1 ${code} ${reason}\r\nContent-Length: ${body.len}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n${extra}\r\n')
+	c.close_after = !keepalive || c.request.close || s.draining || c.requests >= s.opts.max_keepalive_requests - 1 || c.request.expect || c.request.frame.kind == .chunked || c.request.frame.remaining > 262144
+	connection := if c.close_after { 'Connection: close\r\n' } else { '' }
+	content := if content_type == '' { '' } else { 'Content-Type: ${content_type}\r\n' }
+	length := if code in [204, 304] || (keepalive && c.request.method == 'HEAD' && body == '') { '' } else { 'Content-Length: ${body.len}\r\n' }
+	if code in [204, 304] { response_body = '' }
+	header.write_string('HTTP/1.1 ${code} ${reason}\r\n${length}${content}${connection}${extra}\r\n')
 	edit_header_buffer(mut header, c.response_headers, c.header_values) or {
 		// Never emit malformed or oversized configured headers, including on errors.
 		header.clear()
 		c.log_status = 500
+		c.close_after = true
 		response_body = ''
 		header.write_string('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
 	}
 	c.to_client.add(header.bytes())
 	if c.request.method != 'HEAD' { c.to_client.add(response_body.bytes()) }
 	c.local = true
-	c.close_after = true
+	c.have_response = true
+	c.response = Message{frame: Framing{done: true}}
 }
 
 fn (mut s Server) accept_clients(listener int, tls bool) {
@@ -244,7 +255,7 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	site := cfg.sites[c.site]
 	c.access_log = logs[site.log_output] or { unsafe { nil } }
 	c.response_headers = site.response_headers.clone()
-	c.header_values = HeaderValues{uri: m.uri, host: m.host.all_before(':'), hostport: m.host, scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip}
+	c.header_values = HeaderValues{uri: m.uri, method: m.method, fields: m.fields.clone(), host: m.host.all_before(':'), hostport: m.host, scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip}
 	if c.tls == unsafe { nil } {
 		if m.uri.all_before('?').starts_with('/.well-known/acme-challenge/') && m.method in [
 			'GET',
@@ -280,9 +291,7 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	}
 	c.response_headers << route.response_headers
 	if route.redirect != '' {
-		location := expand_header(route.redirect, c.header_values)!
-		if location.len > header_limit / 2 || invalid_controls(location, false) || location.contains(' ') { return error('invalid redirect target') }
-		s.respond(mut c, route.redirect_code, redirect_reason(route.redirect_code), '', 'Location: ${location}\r\n')
+		s.redirect_response(mut c, route)!
 		return false
 	}
 	c.log_upstream = route.upstream
@@ -322,7 +331,14 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 
 fn (mut s Server) consume_request(mut c Connection) ! {
 	if !c.have_request && !s.begin_request(mut c)! { return }
-	if c.local || c.backend_stop_write || c.request.frame.done || c.request_buffer.len() == 0 { return }
+	if c.local {
+		if !c.close_after && !c.request.frame.done {
+			n := c.request.frame.consume(c.request_buffer.bytes())!
+			c.request_buffer.skip(n)
+		}
+		return
+	}
+	if c.backend_stop_write || c.request.frame.done || c.request_buffer.len() == 0 { return }
 	data := c.request_buffer.bytes()
 	limit := if data.len < c.to_backend.room() { data.len } else { c.to_backend.room() }
 	n := c.request.frame.consume(data[..limit])!
@@ -398,13 +414,7 @@ fn (mut s Server) backend_eof(mut c Connection) ! {
 }
 
 fn (mut s Server) finish_request(mut c Connection) ! {
-	if c.local {
-		if c.to_client.len() == 0 {
-			s.log_access(mut c, true)
-			c.dead = true
-		}
-		return
-	}
+	if c.local && !c.close_after && !c.request.frame.done { return }
 	if !c.have_response || !c.response.frame.done || c.to_client.len() > 0 { return }
 	s.log_access(mut c, true)
 	if c.close_after || s.draining {
@@ -415,6 +425,7 @@ fn (mut s Server) finish_request(mut c Connection) ! {
 	c.requests++
 	release_runtime(mut c)
 	c.have_request = false
+	c.local = false
 	c.access_log = unsafe { nil }
 	c.response_headers = []HeaderEdit{}
 	c.header_values = HeaderValues{}
@@ -551,10 +562,10 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		}
 		if !c.local && c.response_buffer.len() > 0 { s.consume_response(mut c)! }
 		if !c.local && !c.have_request && c.request_buffer.len() > 0 { s.consume_request(mut c)! }
-		if !c.local && c.have_request && !c.request.frame.done && c.request_buffer.len() > 0 && c.to_backend.room() > 0 {
+		if c.have_request && !c.request.frame.done && c.request_buffer.len() > 0 && c.to_backend.room() > 0 {
 			s.consume_request(mut c)!
 		}
-		can_read := !c.local && (!c.have_request || (!c.request.frame.done && (!c.have_response || c.tunnel))) && c.request_buffer.room() >= 16384 && c.to_backend.room() >= 16384
+		can_read := (!c.local || !c.close_after) && (!c.have_request || (!c.request.frame.done && (!c.have_response || c.tunnel || c.local))) && c.request_buffer.room() >= 16384 && c.to_backend.room() >= 16384
 		if client_readable && can_read && !(c.write_len > 0 && c.write_want == 1) {
 			mut n := 0
 			if c.tls != unsafe { nil } {
@@ -600,7 +611,7 @@ fn (mut s Server) update_interests(mut c Connection) ! {
 		flags = c.handshake_want
 	} else {
 		if c.to_client.len() > 0 { flags |= c.write_want }
-		if !c.local && (!c.have_request || (!c.request.frame.done && (!c.have_response || c.tunnel))) && c.request_buffer.room() >= 16384 && c.to_backend.room() >= 16384 {
+		if (!c.local || !c.close_after) && (!c.have_request || (!c.request.frame.done && (!c.have_response || c.tunnel || c.local))) && c.request_buffer.room() >= 16384 && c.to_backend.room() >= 16384 {
 			flags |= c.read_want
 		}
 	}

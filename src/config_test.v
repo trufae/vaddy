@@ -87,7 +87,7 @@ fn test_https_upstreams_and_transport_validation() ! {
 fn test_redirect_only_sites_and_invalid_redirects() ! {
 	cfg := parse_config('http://localhost {\n redir https://example.org{uri}\n}')!
 	assert cfg.sites[0].route_for('/any')?.redirect_code == 302
-	for directive in ['redir /new 200', 'redir /new 9999999999999999999999999999999999999999999999999999999999999999999999999999', 'redir /old /new html', 'redir "bad\rvalue"', 'redir /new{unknown}'] {
+	for directive in ['redir * /new 200', 'redir * /new 9999999999999999999999999999999999999999999999999999999999999999999999999999', 'redir "bad\rvalue"'] {
 		if _ := parse_config('http://localhost {\n ${directive}\n}') { assert false, directive }
 	}
 	if _ := parse_config('http://localhost {\n handle {\n redir /new\n reverse_proxy localhost:8001\n }\n}') { assert false }

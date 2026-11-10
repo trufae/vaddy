@@ -207,11 +207,13 @@ example.org {
 ```
 
 `redir [matcher] target [code]` accepts exact paths, trailing `*` paths or named
-path matchers. With no matcher it redirects every request, so a site may consist
-only of `redir`. The default is 302 (`temporary`); `permanent` means 301. Explicit
-301, 302, 303, 307 and 308 codes are supported. Top-level redirects run before
-proxy/handle routes, following Caddy's directive ordering. Inside a `handle`, put
-the matcher on the handle and choose either a redirect or proxy as its action.
+path matchers. Use `*` before a relative target: `redir * /new 308`. Like Caddy,
+`redir /new 308` instead matches `/new` and redirects to the target `308`.
+Codes are any 3xx status, 401, `temporary` (302, the default), `permanent` (301),
+`html` (a 200 HTML browser redirect), or a request placeholder such as
+`{query.code}`. Redirect-only sites, HEAD and persistent connections are supported.
+Unknown placeholders in targets are preserved; request header/query placeholders
+and their long Caddy names are expanded once.
 
 Targets use the same request placeholders as headers. Include `{uri}` to retain
 the original path and query; a fixed target does not automatically copy them.

@@ -19,6 +19,8 @@ mut:
 	matcher  string
 	redirect string
 	redirect_code int = 302
+	redirect_status string
+	redirect_html bool
 	redirect_first bool
 	rewrite  string
 	upstream string
@@ -226,6 +228,8 @@ fn parse_route(d Directive) !Route {
 				if redirect.patterns.len > 0 || redirect.matcher != '' { return error('put redirect matcher on handle') }
 				route.redirect = redirect.redirect
 				route.redirect_code = redirect.redirect_code
+				route.redirect_status = redirect.redirect_status
+				route.redirect_html = redirect.redirect_html
 			}
 			'rewrite' {
 				if child.args.len != 3 || child.args[1] != '*' || route.rewrite != '' {

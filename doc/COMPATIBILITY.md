@@ -9,7 +9,7 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | Site addresses | DNS hostnames, comma/space separated aliases, multiple sites; `http://name` opts out of TLS. Use global/CLI ports instead of address port suffixes. |
 | Matchers | `@name path /a /prefix/*`; inline exact/trailing-wildcard `handle` matchers; case-insensitive, unescaped, normalized path matching |
 | Routing | Mutually exclusive `handle` blocks, single-path specificity sorting, unmatched fallback |
-| Redirects | `redir [path or @matcher] target [301/302/303/307/308/permanent/temporary]`; redirect-only sites and redirects inside `handle` |
+| Redirects | `redir [path or @matcher] target [3xx/401/permanent/temporary/html/placeholder]`; redirect-only sites and redirects inside `handle` |
 | Rewriting | `rewrite * /target`, including `{uri}` and preserved query strings |
 | Headers | `header`, `request_header`, proxy `header_up`/`header_down`; set, append, remove and set-if-absent operations; repeated fields preserved |
 | Proxy | One HTTP/HTTPS upstream per route, verified TLS, preserved HTTP Host (HTTPS uses the upstream Host), regenerated X-Forwarded-For/Host/Proto, hop-by-hop header removal |
@@ -59,8 +59,9 @@ tracking them here does not imply that removing those restrictions is desirable.
 ### Redirects
 
 - [ ] **CADDY-007 — Full redirect behavior:** support HTML redirects, status-code
-  placeholders and Caddy's remaining accepted codes. Vaddy currently accepts only
-  301, 302, 303, 307 and 308, plus `permanent` and `temporary`, and sends an empty body.
+  placeholders and Caddy's remaining accepted codes. Standard forms are implemented
+  and compared in CADDY-051. Remaining: dynamic informational/nonstandard status
+  codes outside 200–599 and placeholders supplied by unsupported Caddy modules.
 
 ### Logging
 
@@ -183,3 +184,12 @@ tracking them here does not imply that removing those restrictions is desirable.
   headers, status/body output, logging and reload behavior. Current feature tests
   and selected comparisons do not establish complete Caddy equivalence. Record
   the Caddy version used when claiming compatibility.
+
+### Verified steps
+
+- [x] **CADDY-051 — Standard redirect forms (part of CADDY-007):** Caddy matcher
+  extraction, all literal 3xx codes and 401, aliases, HTML template, request
+  header/query status placeholders (200–599), HEAD, and connection reuse.
+  `make compatibility` compares 15 configurations against Caddy
+  `8a6ab2b7bb3c6b83ed8d8031d6457375629858d8` (2026-11-10). Unknown target
+  placeholders are preserved. The broader placeholder gap remains CADDY-030.

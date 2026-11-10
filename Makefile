@@ -32,6 +32,10 @@ integration: $(TARGET)
 	python3 tests/upstream.py ./$(TARGET)
 	python3 tests/reload.py ./$(TARGET)
 
+# Caddy is supplied explicitly so comparisons record the actual reference version.
+compatibility: $(TARGET)
+	python3 tests/compatibility.py ./$(TARGET) ./caddy-bench
+
 bench:
 	VADDY_BENCH=1 $(V) -cc clang -gc boehm -cflags '-O3' -d use_openssl src/server_test.v
 

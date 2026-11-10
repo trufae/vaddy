@@ -68,14 +68,14 @@ def run(binary):
     with tempfile.TemporaryDirectory(prefix="vaddy-integration-") as directory:
         root = Path(directory)
         config = (ROOT / "Caddyfile").read_text()
-        config = config.replace("example.org {", "localhost {\n        tls internal")
+        config = config.replace("example.org {", f'localhost {{\n log {{\n output file "{root / "access.jsonl"}"\n }}\n        tls internal')
         config = config.replace("localhost:8001", f"127.0.0.1:{backend.server_port}")
         (root / "Caddyfile").write_text(config)
         with (root / "server.log").open("w+") as log:
             proc = subprocess.Popen([
                 binary, "run", "--config", str(root / "Caddyfile"),
                 "--data", str(root / "data"), "--bind", "127.0.0.1",
-                "--http-port", str(http_port), "--https-port", str(https_port),
+                "--http-port", str(http_port), "--https-port", str(https_port), "--workers", "3",
             ], stdout=log, stderr=log)
             try:
                 deadline = time.monotonic() + 15
@@ -138,6 +138,20 @@ def run(binary):
                 with socket.create_connection(("127.0.0.1", http_port), timeout=3) as raw:
                     raw.sendall(b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\n")
                     assert raw.recv(1024).startswith(b"HTTP/1.1 400")
+                def parallel_request(i):
+                    client = http.client.HTTPConnection('localhost', http_port, timeout=3)
+                    client.request('GET', f'/parallel/{i}')
+                    reply = client.getresponse()
+                    assert reply.status == 308
+                    reply.read()
+                    client.close()
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                    list(pool.map(parallel_request, range(40)))
+                records = [json.loads(line) for line in (root / 'access.jsonl').read_text().splitlines()]
+                parallel = [r for r in records if r['uri'].startswith('/parallel/')]
+                assert len(parallel) == 40
+                assert all(r['status'] == 308 and r['complete'] for r in parallel)
                 print("PASS: TCP, verified TLS, supplied routes, redirects, headers, keep-alive, streaming, uploads, malformed framing")
             finally:
                 proc.terminate()

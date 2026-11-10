@@ -1,6 +1,7 @@
 module main
 
 import os
+import json2
 import time
 
 #include "@VMODROOT/tests/support.h"
@@ -421,4 +422,48 @@ fn test_custom_redirects_precedence_and_head() ! {
 	assert response.starts_with('HTTP/1.1 307')
 	assert response.contains('Location: /target\r\n')
 	assert response.contains('X-Local: yes\r\n')
+}
+
+fn test_access_logs_once_per_request_and_aborted_response() ! {
+	dir := os.join_path(os.temp_dir(), 'vaddy-log-${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	path := os.join_path(dir, 'access.jsonl')
+	mut h := harness()!
+	h.s.cfg = parse_config('http://localhost {\n log {\n output file "${path}"\n format json\n }\n redir /old /new 308\n reverse_proxy localhost:8001\n}')!
+	h.s.access_logs = prepare_access_logs(h.s.cfg)!
+	defer { close_access_logs(h.s.access_logs) }
+	defer { h.close() }
+	for _ in 0 .. 2 {
+		send_text(h.client, 'GET /quoted?x="secret" HTTP/1.1\r\nHost: localhost\r\nAuthorization: secret\r\nCookie: private\r\n\r\n')
+		h.pump()!
+		receive(h.upstream)
+		send_text(h.upstream, 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok')
+		h.pump()!
+		response := receive(h.client)
+		lines := os.read_lines(path)!
+		record := json2.decode[AccessRecord](lines.last())!
+		assert record.status == 200 && record.complete
+		assert record.bytes_written == response.len
+		assert record.uri == '/quoted?x="secret"'
+		assert !lines.last().contains('Authorization') && !lines.last().contains('private')
+	}
+	assert os.read_lines(path)!.len == 2
+	send_text(h.client, 'GET /aborted HTTP/1.1\r\nHost: localhost\r\n\r\n')
+	h.pump()!
+	receive(h.upstream)
+	send_text(h.upstream, 'HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\npartial')
+	h.pump()!
+	h.s.close_client(mut h.c)
+	lines := os.read_lines(path)!
+	assert lines.len == 3
+	record := json2.decode[AccessRecord](lines[2])!
+	assert record.status == 200 && !record.complete
+	mut redirect := harness()!
+	defer { redirect.close() }
+	redirect.s.cfg = h.s.cfg
+	redirect.s.access_logs = h.s.access_logs
+	send_text(redirect.client, 'GET /old HTTP/1.1\r\nHost: localhost\r\n\r\n')
+	redirect.pump()!
+	assert json2.decode[AccessRecord](os.read_lines(path)!.last())!.status == 308
 }

@@ -23,6 +23,12 @@ mut:
 @[heap]
 struct Connection {
 mut:
+	access_log &AccessLog = unsafe { nil }
+	access_logged bool
+	log_status int
+	log_started i64
+	log_upstream string
+	bytes_written i64
 	fd              int
 	counted         bool
 	backend         int = -1
@@ -80,6 +86,7 @@ mut:
 	clients       map[int]&Connection
 	owners        map[int]int
 	watches       map[int]int
+	access_logs   map[string]&AccessLog
 	backends      map[string]Backend
 	last_tick     i64
 	accept_retry  i64
@@ -121,6 +128,7 @@ fn (mut s Server) close_backend(mut c Connection) {
 
 fn (mut s Server) close_client(mut c Connection) {
 	if c.fd < 0 { return }
+	s.log_access(mut c, false)
 	s.close_backend(mut c)
 	s.watch(c.fd, 0) or {}
 	s.watches.delete(c.fd)
@@ -143,15 +151,19 @@ fn (mut s Server) respond(mut c Connection, code int, reason string, body string
 	s.close_backend(mut c)
 	c.to_client.clear()
 	c.to_backend.clear()
+	c.log_status = code
+	mut response_body := body
 	mut header := Buffer{}
 	header.write_string('HTTP/1.1 ${code} ${reason}\r\nContent-Length: ${body.len}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n${extra}\r\n')
 	edit_header_buffer(mut header, c.response_headers, c.header_values) or {
 		// Never emit malformed or oversized configured headers, including on errors.
 		header.clear()
-		header.write_string('HTTP/1.1 ${code} ${reason}\r\nContent-Length: ${body.len}\r\nConnection: close\r\n${extra}\r\n')
+		c.log_status = 500
+		response_body = ''
+		header.write_string('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
 	}
 	c.to_client.add(header.bytes())
-	if c.request.method != 'HEAD' { c.to_client.add(body.bytes()) }
+	if c.request.method != 'HEAD' { c.to_client.add(response_body.bytes()) }
 	c.local = true
 	c.close_after = true
 }
@@ -209,12 +221,18 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	c.request_buffer.skip(end + 4)
 	c.request = m
 	c.have_request = true
+	c.access_logged = false
+	c.log_status = 0
+	c.log_started = c.started
+	c.bytes_written = 0
+	c.log_upstream = ''
 	c.site = s.cfg.site_index(m.host)
 	if c.site < 0 {
 		s.respond(mut c, 421, 'Misdirected Request', 'Unknown host\n', '')
 		return false
 	}
 	site := s.cfg.sites[c.site]
+	c.access_log = s.access_logs[site.log_output] or { unsafe { nil } }
 	c.response_headers = site.response_headers.clone()
 	c.header_values = HeaderValues{uri: m.uri, host: m.host.all_before(':'), hostport: m.host, scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip}
 	if c.tls == unsafe { nil } {
@@ -257,6 +275,7 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		s.respond(mut c, route.redirect_code, redirect_reason(route.redirect_code), '', 'Location: ${location}\r\n')
 		return false
 	}
+	c.log_upstream = route.upstream
 	c.header_values.upstream_hostport = route.upstream.trim_string_left('https://')
 	if c.backend >= 0 && (c.backend_name != route.backend_key() || C.vaddy_socket_alive(c.backend) == 0) {
 		s.close_backend(mut c)
@@ -330,6 +349,7 @@ fn (mut s Server) consume_response(mut c Connection) ! {
 			continue
 		}
 		c.have_response = true
+		c.log_status = m.status
 		if !c.tunnel && (!c.request.frame.done || c.to_backend.len() > 0) {
 			c.close_after = true
 			c.backend_stop_write = true
@@ -367,10 +387,14 @@ fn (mut s Server) backend_eof(mut c Connection) ! {
 
 fn (mut s Server) finish_request(mut c Connection) ! {
 	if c.local {
-		if c.to_client.len() == 0 { c.dead = true }
+		if c.to_client.len() == 0 {
+			s.log_access(mut c, true)
+			c.dead = true
+		}
 		return
 	}
 	if !c.have_response || !c.response.frame.done || c.to_client.len() > 0 { return }
+	s.log_access(mut c, true)
 	if c.close_after || s.draining {
 		c.dead = true
 		return
@@ -378,6 +402,9 @@ fn (mut s Server) finish_request(mut c Connection) ! {
 	if c.response.close { s.close_backend(mut c) }
 	c.requests++
 	c.have_request = false
+	c.access_log = unsafe { nil }
+	c.response_headers = []HeaderEdit{}
+	c.header_values = HeaderValues{}
 	c.have_response = false
 	c.request = Message{ fields: c.request.fields }
 	c.response = Message{ fields: c.response.fields }
@@ -450,7 +477,8 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 				}
 			}
 			if n > 0 {
-				c.to_client.skip(n)
+				c.bytes_written += n
+			c.to_client.skip(n)
 				progress = true
 			}
 		}
@@ -642,6 +670,8 @@ fn run_server(cfg Config, opts Options) ! {
 	mut s := Server{ cfg: cfg, opts: opts, queue: C.vaddy_queue() }
 	if s.queue < 0 { return error('cannot create event queue') }
 	defer { C.vaddy_queue_close(s.queue) }
+	s.access_logs = prepare_access_logs(cfg)!
+	defer { close_access_logs(s.access_logs) }
 	s.backends = prepare_backends(cfg)!
 	defer { free_backends(s.backends) }
 	s.http_fd = C.vaddy_listen(&char(opts.bind.str), &char(cfg.http_port.str().str))

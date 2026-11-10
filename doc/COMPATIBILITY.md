@@ -16,12 +16,13 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | HTTP | HTTP/1.1, HTTP/1.0 clients with connection close, keep-alive, sequential pipelining, HEAD, informational responses, length/chunked bodies, EOF-delimited responses |
 | Streaming | Bounded upload/download queues, backpressure, SSE, WebSocket upgrades |
 | TLS | OpenSSL TLS 1.2+, automatic public/internal certificates, live context replacement |
+| Access logs | Per-site `log`, JSON lines to stderr/stdout or an append-only file; request status, timing, bytes and completion |
 | CLI | `run`, `validate`, `version`, `--config`, `--adapter caddyfile` |
 
 Not implemented: HTTP/2 or HTTP/3, dynamic DNS refresh, balancing,
 shared upstream connection pools, request retries, compression, file serving,
 imports/snippets/environment interpolation, arbitrary placeholders or matchers,
-JSON configuration, the admin API, access logs, and Caddy plugins. Upstream
+JSON configuration, the admin API, and Caddy plugins. Upstream
 connections are reused per client while both sides permit it; failed requests
 are not replayed. Header removal applies to response headers, not trailer fields.
 Local IP-address certificate subjects are not supported; use DNS names such as

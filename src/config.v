@@ -30,6 +30,7 @@ mut:
 
 struct Site {
 mut:
+	log_output     string
 	hosts          []string
 	plain          bool
 	response_headers []HeaderEdit
@@ -314,6 +315,10 @@ fn parse_config(input string) !Config {
 				continue
 			}
 			match name {
+				'log' {
+					if site.log_output != '' { return error('duplicate log directive') }
+					site.log_output = parse_access_log(child)!
+				}
 				'header' { site.response_headers << parse_headers(child, false)! }
 				'request_header' { site.request_headers << parse_headers(child, true)! }
 				'handle' { site.routes << parse_route(child)! }

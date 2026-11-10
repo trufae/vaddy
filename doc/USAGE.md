@@ -217,3 +217,35 @@ Targets use the same request placeholders as headers. Include `{uri}` to retain
 the original path and query; a fixed target does not automatically copy them.
 Redirects have an empty body, including for HEAD, and do not contact the backend.
 HTML redirects and arbitrary status-code placeholders are not supported.
+
+## Access logs
+
+Add `log` to a site for JSON access logs on stderr, or select an output:
+
+```caddyfile
+example.org {
+    log {
+        output file /var/log/vaddy/access.jsonl
+        format json
+    }
+    reverse_proxy localhost:8001
+}
+```
+
+`output stdout` and `output stderr` are also supported. Parent directories must
+already exist and be writable. Files are opened in append mode at startup, with
+mode 0600 for new files on POSIX. Sites using the same destination share a writer;
+worker writes are serialized and flushed after each record. File rotation and
+Caddy's log filtering/custom encoders are not implemented.
+
+Each valid request for a logging-enabled site produces one record when its
+response finishes or its connection closes. Fields are `ts` (Unix milliseconds),
+`remote_ip`, `method`, original `host` and `uri`, `status`, `bytes_written`,
+`duration_ms`, `upstream`, and `complete`. Bytes count plaintext HTTP bytes sent
+to the client, including headers and framing, excluding TLS overhead. Interrupted
+responses have `complete: false`; status is zero if no response was selected.
+WebSocket sessions are recorded when they end. TLS failures and malformed requests
+that cannot be assigned to a site do not produce site access records.
+
+Headers, cookies and credentials are not recorded. URIs include query strings;
+avoid putting secrets in URLs. Operational messages still go to stderr separately.

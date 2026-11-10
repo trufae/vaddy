@@ -239,9 +239,67 @@ def logging(vaddy, caddy):
         backend.server_close()
 
 
+def log_customization(vaddy, caddy):
+    cases = [
+        ('format json', 'log_skip /skip'),
+        ('format json\nlevel WARN', 'log_level /warn WARN'),
+        ('format json', 'log_append tag constant\nlog_append uri {uri}\nlog_append <early {query.token}\nlog_append response_status {http.response.status}'),
+        ('format filter {\n wrap json\n fields {\n request>headers>Authorization delete\n request>remote_ip hash\n status rename code\n }\n}', ''),
+        ('format filter {\n wrap json\n fields {\n request>uri query {\n replace token HIDDEN\n delete remove\n }\n }\n}', ''),
+        ('format filter {\n wrap json\n fields {\n request>headers>X-Value regexp "(secret)" "hidden-$1"\n }\n}', ''),
+        ('format append {\n wrap json\n fields {\n deployment dev\n number 12\n }\n}', ''),
+    ]
+    for encoder, directives in cases:
+        outputs = []
+        for engine, binary in [("vaddy", vaddy), ("caddy", caddy)]:
+            config = 'log compat {\n output file "$LOG"\n' + encoder + '\n}\n' + directives + '\nredir * /new'
+            with server(binary, engine, config) as (port, root):
+                conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+                for path in ["/ok?token=secret&remove=yes&token=second", "/skip", "/warn"]:
+                    request(conn, "GET", path, headers={"Authorization": "secret-auth", "X-Value": "secret"})
+                conn.close()
+                # Access logs are emitted at handler completion; wait for the final request.
+                deadline = time.monotonic() + 3
+                while True:
+                    lines = (root / "access.jsonl").read_text().splitlines()
+                    records = [json.loads(line) for line in lines]
+                    if any(r["request"]["uri"] == "/warn" for r in records):
+                        break
+                    assert time.monotonic() < deadline, records
+                    time.sleep(.01)
+                for record in records:
+                    record.pop("ts")
+                    record.pop("duration")
+                    record["request"].pop("remote_port")
+                    for name in ("Server", "Date", "Via"):
+                        record["resp_headers"].pop(name, None)
+                outputs.append(records)
+        assert outputs[0] == outputs[1], (encoder, directives, outputs)
+    # Both logger instances receive ordinary traffic; log_name selects only one.
+    outputs = []
+    for engine, binary in [("vaddy", vaddy), ("caddy", caddy)]:
+        config = 'log first {\n output file "$LOG"\n}\nlog second {\n output file "$LOG"\n}\nlog_name /selected second\nredir * /new'
+        with server(binary, engine, config) as (port, root):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+            request(conn, "GET", "/both")
+            request(conn, "GET", "/selected")
+            conn.close()
+            deadline = time.monotonic() + 3
+            while True:
+                records = [json.loads(line) for line in (root / "access.jsonl").read_text().splitlines()]
+                if len(records) >= 3:
+                    break
+                assert time.monotonic() < deadline, records
+                time.sleep(.01)
+            outputs.append(sorted((r["logger"], r["request"]["uri"]) for r in records))
+    assert outputs[0] == outputs[1], outputs
+    print(f"log customization compatibility: {len(cases) + 1} cases")
+
+
 if __name__ == "__main__":
     vaddy, caddy = map(lambda p: str(Path(p).resolve()), sys.argv[1:3])
     print("Reference:", subprocess.check_output([caddy, "version"], text=True).strip())
     redirects(vaddy, caddy)
     headers(vaddy, caddy)
     logging(vaddy, caddy)
+    log_customization(vaddy, caddy)

@@ -8,15 +8,15 @@ fn test_log_rotation_compression_retention_and_reload_writers() ! {
 	dir := os.join_path(os.temp_dir(), 'vaddy-rotate-${os.getpid()}')
 	defer { os.rmdir_all(dir) or {} }
 	cfg := parse_config('http://localhost {\n log {\n output file "${dir}/nested/access.log" {\n roll_size 1KiB\n roll_keep 2\n roll_keep_for 1d\n }\n }\n redir * /new\n}')!
-	assert cfg.sites[0].log_options.roll_size == 1048576
+	assert cfg.sites[0].logs[0].output.roll_size == 1048576
 	mut logs := prepare_access_logs(cfg)!
 	defer { close_access_logs(logs) }
-	mut logger := logs[cfg.sites[0].log_output]!
+	mut logger := logs[cfg.sites[0].logs[0].output.output]!
 	logger.options.roll_size = 1024
 	// A second generation's writer must follow rotations from the first.
 	old_logs := prepare_access_logs(cfg)!
 	defer { close_access_logs(old_logs) }
-	mut old := old_logs[cfg.sites[0].log_output]!
+	mut old := old_logs[cfg.sites[0].logs[0].output.output]!
 	old.options.roll_size = 1024
 	os.write_file('${dir}/nested/access-not-a-rotation.log.gz', 'unrelated')!
 	for i in 0 .. 20 {
@@ -40,4 +40,18 @@ fn test_log_output_validation_and_disabled_rotation() ! {
 	for option in ['roll_size -1', 'mode 888', 'roll_keep nope', 'roll_keep_for -1h', 'roll_compression invalid'] {
 		if _ := parse_config('http://localhost {\n log {\n output file /unused {\n ${option}\n }\n }\n redir * /new\n}') { assert false, option }
 	}
+}
+
+fn test_log_filters_preserve_repeated_query_values_and_redact_arrays() ! {
+	filter := LogFilter{path: ['request', 'uri'], kind: 'query', actions: [Directive{args: ['replace', 'token', 'HIDDEN']}, Directive{args: ['delete', 'remove']}]}
+	assert filter_log_string('/?token=one&token=two&remove=yes', filter)! == '/?token=HIDDEN&token=HIDDEN'
+	assert filter_log_string('one=secret; two=kept', LogFilter{kind: 'cookie', actions: [Directive{args: ['delete', 'one']}]})! == 'two=kept'
+	assert filter_log_string('one=secret; Path=/; Secure', LogFilter{kind: 'set_cookie', actions: [Directive{args: ['delete', 'one']}]})! == ''
+}
+
+fn test_named_log_defaults_and_hostname_selection() ! {
+	cfg := parse_config('http://localhost {\n log named {\n output discard\n }\n log {\n output discard\n }\n redir * /new\n}')!
+	assert cfg.sites[0].logs[1].name == 'log0'
+	assert log_host_matches('*.EXAMPLE.org', 'www.example.org')
+	assert !log_host_matches('*.example.org', 'www.sub.example.org')
 }

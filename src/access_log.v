@@ -3,7 +3,6 @@ module main
 import os
 import sync
 import time
-import json2
 
 @[heap]
 struct AccessLog {
@@ -88,20 +87,25 @@ fn request_log(c &Connection) LogRequest {
 	}
 }
 
-fn parse_access_log(d Directive) !LogOptions {
+fn parse_access_log(d Directive) !LogConfig {
 	if d.args.len !in [1, 2] { return error('expected log [name] { output ... }') }
-	mut opts := LogOptions{}
+	mut config := LogConfig{}
 	mut seen := map[string]bool{}
 	for child in d.children {
 		if child.args.len == 0 { return error('empty log option') }
 		name := child.args[0]
-		if name in seen { return error('duplicate log option ${name}') }
+		if name in seen && name != 'hostnames' { return error('duplicate log option ${name}') }
 		seen[name] = true
-		if child.args == ['format', 'json'] && child.children.len == 0 { continue }
-		if name == 'output' { parse_log_output(child, mut opts)! }
-		else { return error('unsupported log option ${name}') }
+		match name {
+			'output' { parse_log_output(child, mut config.output)! }
+			'format' { config.format = parse_log_format(child)! }
+			'level' { if child.args.len != 2 || child.children.len > 0 { return error('expected log level LEVEL') }; config.level = log_level(child.args[1])! }
+			'no_hostname' { if child.args.len != 1 || child.children.len > 0 { return error('no_hostname takes no arguments') }; config.no_hostname = true }
+			'hostnames' { if child.args.len < 2 || child.children.len > 0 { return error('expected hostnames') }; config.hostnames << child.args[1..] }
+			else { return error('unsupported log option ${name}') }
+		}
 	}
-	return opts
+	return config
 }
 
 fn prepare_access_logs(cfg Config) !map[string]&AccessLog {
@@ -109,19 +113,21 @@ fn prepare_access_logs(cfg Config) !map[string]&AccessLog {
 	mut complete := false
 	defer { if !complete { close_access_logs(logs) } }
 	for site in cfg.sites {
-		output := site.log_output
-		if output == '' { continue }
-		if previous := logs[output] {
-			if previous.options != site.log_options { return error('conflicting options for shared log output') }
-			continue
+		for config in site.logs {
+			output := config.output.output
+			if output == '' { continue }
+			if previous := logs[output] {
+				if previous.options != config.output { return error('conflicting options for shared log output') }
+				continue
+			}
+			mut file := match output {
+				'stderr' { os.stderr() }
+				'stdout' { os.stdout() }
+				'discard' { os.File{} }
+				else { open_log_file(config.output)! }
+			}
+			logs[output] = &AccessLog{file: file, owned: output.starts_with('file:'), options: config.output, opened: time.sys_mono_now()}
 		}
-		mut file := match output {
-			'stderr' { os.stderr() }
-			'stdout' { os.stdout() }
-			'discard' { os.File{} }
-			else { open_log_file(site.log_options)! }
-		}
-		logs[output] = &AccessLog{file: file, owned: output.starts_with('file:'), options: site.log_options, opened: time.sys_mono_now()}
 	}
 	complete = true
 	return logs
@@ -136,26 +142,42 @@ fn close_access_logs(logs map[string]&AccessLog) {
 }
 
 fn (mut s Server) log_access(mut c Connection, _complete bool) {
-	if c.access_log == unsafe { nil } || c.access_logged || !c.have_request { return }
+	if c.access_targets.len == 0 || c.access_logged || !c.have_request { return }
 	c.access_logged = true
+	mut level := if c.log_status >= 500 { 3 } else { 1 }
+	for rule in c.log_rules {
+		if !header_edit_matches(rule.match, [], c.header_values, 0) { continue }
+		if rule.kind in ['log_skip', 'skip_log'] { return }
+		if rule.kind == 'log_level' { level = log_level(rule.args[0]) or { level } }
+	}
 	mut response_headers := log_headers(c.log_response_fields)
 	if c.log_empty_content_type && 'Content-Type' !in response_headers { response_headers['Content-Type'] = []string{} }
-	record := AccessRecord{
-		level: if c.log_status >= 500 { 'error' } else { 'info' }
-		ts: f64(time.now().unix_nano()) / 1e9
-		logger: 'http.log.access' + if c.log_name == '' { '' } else { '.' + c.log_name }
-		request: request_log(c)
-		bytes_read: c.log_bytes_read
-		duration: f64(time.sys_mono_now() - c.log_started) / 1e9
-		size: c.log_size
-		status: c.log_status
-		resp_headers: response_headers
+	for target in c.access_targets {
+		if level < target.config.level { continue }
+		record := AccessRecord{
+			level: ['debug', 'info', 'warn', 'error'][level]
+			ts: f64(time.now().unix_nano()) / 1e9
+			logger: 'http.log.access' + if target.config.name == '' { '' } else { '.' + target.config.name }
+			request: request_log(c)
+			bytes_read: c.log_bytes_read
+			duration: f64(time.sys_mono_now() - c.log_started) / 1e9
+			size: c.log_size
+			status: c.log_status
+			resp_headers: response_headers
+		}
+		mut extra := c.log_early.clone()
+		// Deferred append handlers unwind in reverse order.
+		for rule in c.log_rules.reverse() {
+			if rule.kind == 'log_append' && !rule.args[0].starts_with('<') && header_edit_matches(rule.match, [], c.header_values, 0) {
+				extra[rule.args[0].trim_string_left('<')] = log_append_value(rule.args[1], c)
+			}
+		}
+		line := encode_access_record(record, target.config.format, extra) or { eprintln('vaddy: log encoding failed: ${err}'); continue }
+		mut logger := target.writer
+		logger.mutex.lock()
+		logger.write_line(line) or { eprintln('vaddy: access log write failed: ${err}') }
+		logger.mutex.unlock()
 	}
-	line := json2.encode(record, escape_unicode: true, time_as_unix: true)
-	mut logger := c.access_log
-	logger.mutex.lock()
-	defer { logger.mutex.unlock() }
-	logger.write_line(line) or { eprintln('vaddy: access log write failed: ${err}') }
 }
 
 fn share_log_mutex(logs map[string]&AccessLog, mutex &sync.Mutex) {

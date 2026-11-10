@@ -11,12 +11,12 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | Routing | Mutually exclusive `handle` blocks, single-path specificity sorting, unmatched fallback |
 | Redirects | `redir [path or @matcher] target [3xx/401/permanent/temporary/html/placeholder]`; redirect-only sites and redirects inside `handle` |
 | Rewriting | `rewrite * /target`, including `{uri}` and preserved query strings |
-| Headers | `header`, `request_header`, proxy `header_up`/`header_down`; set, append, remove and set-if-absent operations; repeated fields preserved |
+| Headers | `header`, `request_header`, proxy `header_up`/`header_down`; set/append/delete, response defaults/defer, RE2 replacements, wildcard deletion, path and response conditions |
 | Proxy | One HTTP/HTTPS upstream per route, verified TLS, preserved HTTP Host (HTTPS uses the upstream Host), regenerated X-Forwarded-For/Host/Proto, hop-by-hop header removal |
 | HTTP | HTTP/1.1, HTTP/1.0 clients with connection close, keep-alive, sequential pipelining, HEAD, informational responses, length/chunked bodies, EOF-delimited responses |
 | Streaming | Bounded upload/download queues, backpressure, SSE, WebSocket upgrades |
 | TLS | OpenSSL TLS 1.2+, automatic public/internal certificates, live context replacement |
-| Access logs | Per-site `log`, JSON lines to stderr/stdout or an append-only file; request status, timing, bytes and completion |
+| Access logs | Named JSON/console logs, filters, custom fields, levels and path-based skipping; stderr/stdout/discard/files; file rotation, gzip and retention; Caddy-style metadata/body counts |
 | Reload | Transactional request-setting reloads through `vaddy reload` or POSIX SIGHUP; active requests keep their configuration; ports and certificate policies require restart |
 | CLI | `run`, `reload`, `validate`, `version`, `--config`, `--adapter caddyfile` |
 
@@ -78,6 +78,9 @@ tracking them here does not imply that removing those restrictions is desirable.
   rolling, custom backup layouts and directory-mode inheritance.
 - [ ] **CADDY-010 — Log customization:** support named loggers, filtering,
   redaction, custom fields, conditional logging, levels and additional encoders.
+  The supported subset is CADDY-056. Remaining: sampling, IP masking, nested
+  encoder wrappers, arbitrary Go time layouts, body/variable capture, undeclared
+  logger fallback, complete cookie parsing, and remaining encoder/module options.
 
 ### Reloads and configuration management
 
@@ -129,8 +132,9 @@ tracking them here does not imply that removing those restrictions is desirable.
   syntax, `uri`, `method` and `try_files`. Vaddy currently supports
   `rewrite * /target` inside proxy handles, with `{uri}` and query preservation.
 - [ ] **CADDY-030 — Variables and placeholders:** support `vars`, `map` and the
-  full placeholder system. Header/redirect values currently recognize only `{uri}`,
-  `{host}`, `{hostport}`, `{scheme}`, `{remote_host}` and `{upstream_hostport}`.
+  full placeholder system. Header/redirect/log values recognize common request
+  placeholders, request headers and query values; module-generated placeholders
+  and arbitrary variables remain incomplete.
 - [ ] **CADDY-031 — Caddyfile reuse and parsing:** support imports, snippets,
   environment expansion and remaining lexical/structural forms, including
   single-site configurations without braces, backtick strings and heredocs.
@@ -225,3 +229,30 @@ tracking them here does not imply that removing those restrictions is desirable.
   Tests verify compression, retention, unrelated-file preservation and overlapping
   generation writers. Compression is synchronous and interval timers are lazy;
   these scheduling differences remain explicitly outside the parity claim.
+
+- [x] **CADDY-056 — Common log customization (part of CADDY-010):** multiple
+  named destinations, `log_name`, `log_skip`, `log_level`, log thresholds,
+  `log_append`, JSON/console output, constant encoder fields, and nested-field
+  delete/rename/replace/hash/regexp/query/cookie filters. Differential cases cover
+  named routing, skipping, severity, custom fields and common JSON filters.
+  Cookie quoting and uncommon formatting variants are not claimed as full parity.
+
+## Which remaining gaps are mandatory?
+
+“Mandatory” depends on the promised deployment. No HTTP specification requires
+implementing every Caddy module. For an unqualified **1:1 with Caddy** claim,
+**every unchecked compatibility item is mandatory within the agreed Caddy version
+and module set**; the completed sub-items above do not close their broader parents.
+
+| Priority | IDs | When required |
+| --- | --- | --- |
+| 🔴 Required for the requested header/redirect/log parity | CADDY-003–010, CADDY-050 | Close the remaining semantics, options and differential coverage before calling these areas 1:1. |
+| 🔴 Required for each release | CADDY-050, CADDY-006 | Verify supported behavior, malformed framing, streaming, concurrency and reloads. Keep framing protections until a safe replacement is tested. |
+| 🟠 Required behind a CDN or another proxy | CADDY-025 | Correct client-IP and forwarded-header trust. |
+| 🟠 Required with changing DNS backends | CADDY-024 | Refresh resolved addresses without a manual reload. |
+| 🟠 Required when upstream SLAs need separate limits | CADDY-002 | Independent connect, TLS handshake, read and write timeouts. |
+| 🟠 Required for multi-backend availability | CADDY-020–022 | Selection, unhealthy-backend exclusion and safe failover. |
+| 🟡 Required only by the chosen workload | Other unchecked IDs | Examples: HTTP/2 upstreams for gRPC, authentication when Vaddy owns access control, static serving when it owns files, or distributed certificate storage across instances. |
+
+Cross-platform CI must validate the new RE2/C++ and zlib dependencies. Local
+macOS tests do not establish Linux, Windows or Alpine compatibility.

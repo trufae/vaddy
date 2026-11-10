@@ -274,6 +274,28 @@ This replaces Vaddy's earlier flat JSON schema. Consumers must use `request.uri`
 instead of `uri`, `size` instead of wire-byte `bytes_written`, and `duration`
 instead of `duration_ms`. The old `complete` and `upstream` fields are removed.
 
+Multiple `log name { ... }` blocks can send each request to multiple destinations.
+`log_name /path/* name` selects a declared logger for matching requests.
+`no_hostname` disables a logger's automatic site association; `hostnames` supplies
+explicit hostname associations. Log names must be declared in this configuration.
+
+`log_skip [path or @matcher]` suppresses matching requests. `log_level /path WARN`
+sets their severity; a log block's `level WARN` filters out lower severities.
+`log_append key value` adds a constant string or a single request
+placeholder; prefix the key with `<` to capture it early. Whole request/response
+body capture and arbitrary variables are not implemented.
+
+The default `format json` supports key renaming (`message_key`, `level_key`,
+`time_key`, `name_key`), common timestamp formats, duration units and level casing.
+`format console` writes a readable tab-separated prefix and JSON fields.
+`format append { fields { ... } }` adds constant fields. `format filter` supports
+`wrap json`/`wrap console` and a `fields` block with paths such as
+`request>headers>Authorization`. Filters include `delete`, `rename`, `replace`,
+`hash` (the first four SHA-256 bytes), `regexp`, `query`, `cookie` and `set_cookie`.
+Query/cookie filters contain `delete name`, `hash name` or `replace name value`
+actions. Put each block entry on its own line. Built-in credential redaction runs
+before configured filters.
+
 ## Configuration reload
 
 Edit the Caddyfile, then use the same data directory as the running server:

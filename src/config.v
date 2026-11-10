@@ -15,6 +15,7 @@ struct Token {
 
 struct Route {
 mut:
+	log_rules []LogRule
 	patterns []string
 	matcher  string
 	redirect string
@@ -32,9 +33,8 @@ mut:
 
 struct Site {
 mut:
-	log_options LogOptions
-	log_name string
-	log_output     string
+	logs []LogConfig
+	log_rules []LogRule
 	hosts          []string
 	plain          bool
 	response_headers []HeaderEdit
@@ -223,6 +223,7 @@ fn parse_route(d Directive) !Route {
 			return error('line ${child.line}: unsupported nested directive')
 		}
 		match child.args[0] {
+			'log_skip', 'skip_log', 'log_level', 'log_name', 'log_append' { route.log_rules << parse_log_rule(child)! }
 			'header' { route.response_headers << parse_headers(child, false)! }
 			'request_header' { route.request_headers << parse_headers(child, true)! }
 			'redir' {
@@ -324,12 +325,13 @@ fn parse_config(input string) !Config {
 			}
 			match name {
 				'log' {
-					if site.log_output != '' { return error('duplicate log directive') }
-					site.log_options = parse_access_log(child)!
-					site.log_output = site.log_options.output
-					site.log_name = if child.args.len == 2 { child.args[1] } else if child.children.len > 0 { 'log${log_count}' } else { '' }
-					log_count++
+					mut log_config := parse_access_log(child)!
+					custom := child.children.any(it.args.len > 0 && it.args[0] !in ['no_hostname', 'hostnames'])
+					log_config.name = if child.args.len == 2 { child.args[1] } else if custom { 'log${log_count}' } else { '' }
+					site.logs << log_config
+					if child.args.len == 1 && custom { log_count++ }
 				}
+				'log_skip', 'skip_log', 'log_level', 'log_name', 'log_append' { site.log_rules << parse_log_rule(child)! }
 				'header' { site.response_headers << parse_headers(child, false)! }
 				'request_header' { site.request_headers << parse_headers(child, true)! }
 				'handle' { site.routes << parse_route(child)! }
@@ -359,10 +361,12 @@ fn parse_config(input string) !Config {
 			}
 		}
 		if site.routes.len == 0 { return error('site needs reverse_proxy, handle or redir') }
+		resolve_log_rules(mut site.log_rules, site.matchers)!
 		resolve_header_matchers(mut site.response_headers, site.matchers)!
 		resolve_header_matchers(mut site.request_headers, site.matchers)!
 		mut fallbacks := 0
 		for mut route in site.routes {
+			resolve_log_rules(mut route.log_rules, site.matchers)!
 			resolve_header_matchers(mut route.response_headers, site.matchers)!
 			resolve_header_matchers(mut route.request_headers, site.matchers)!
 			if route.matcher != '' {
@@ -389,6 +393,20 @@ fn parse_config(input string) !Config {
 			}
 		}
 		cfg.sites << site
+	}
+	mut log_names := map[string]bool{}
+	for site in cfg.sites {
+		for config in site.logs {
+			if config.name != '' && config.name in log_names { return error('duplicate log name ${config.name}') }
+			log_names[config.name] = true
+		}
+	}
+	for site in cfg.sites {
+		mut rules := site.log_rules.clone()
+		for route in site.routes { rules << route.log_rules }
+		for rule in rules {
+			if rule.kind == 'log_name' { for name in rule.args { if name !in log_names { return error('undefined log name ${name}') } } }
+		}
 	}
 	if cfg.sites.len == 0 { return error('no sites configured') }
 	if cfg.http_port == cfg.https_port { return error('HTTP and HTTPS ports must differ') }

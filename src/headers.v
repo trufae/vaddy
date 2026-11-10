@@ -70,12 +70,13 @@ fn placeholder_value(name string, values HeaderValues) ?string {
 	}
 	if key.starts_with('query.') || key.starts_with('uri.query.') {
 		field := key.trim_string_left('uri.').trim_string_left('query.')
+		mut values_found := []string{}
 		for pair in query.split('&') {
 			if (urllib.query_unescape(pair.all_before('=')) or { '' }) == field {
-				return urllib.query_unescape(pair.all_after('=')) or { '' }
+				values_found << if pair.contains('=') { urllib.query_unescape(pair.all_after('=')) or { '' } } else { '' }
 			}
 		}
-		return ''
+		return values_found.join(',')
 	}
 	return none
 }

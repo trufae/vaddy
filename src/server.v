@@ -1,6 +1,7 @@
 module main
 
 import os
+import json2
 import time
 import sync.stdatomic
 
@@ -25,14 +26,15 @@ struct Connection {
 mut:
 	runtime &Runtime = unsafe { nil }
 	backend_generation i64
-	access_log &AccessLog = unsafe { nil }
+	access_targets []AccessTarget
+	log_rules []LogRule
+	log_early map[string]json2.Any
 	access_logged bool
 	log_status int
 	log_started i64
 	log_upstream string
 	log_size i64
 	log_bytes_read i64
-	log_name string
 	log_empty_content_type bool
 	log_response_fields []Field
 	remote_port string
@@ -264,10 +266,12 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		return false
 	}
 	site := cfg.sites[c.site]
-	c.log_name = site.log_name
-	c.access_log = logs[site.log_output] or { unsafe { nil } }
 	c.response_headers = site.response_headers.clone()
 	c.header_values = HeaderValues{uri: m.uri, method: m.method, fields: m.fields.clone(), host: m.host.all_before(':'), hostport: m.host, scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip, remote_port: c.remote_port}
+	c.log_early = map[string]json2.Any{}
+	c.log_rules = site.log_rules.clone()
+	c.capture_early_logs(site.log_rules)
+	c.access_targets = access_targets(cfg, site, logs, c.log_rules, c.header_values)
 	if c.tls == unsafe { nil } {
 		if m.uri.all_before('?').starts_with('/.well-known/acme-challenge/') && m.method in [
 			'GET',
@@ -301,6 +305,9 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		s.respond(mut c, 404, 'Not Found', 'Not Found\n', '')
 		return false
 	}
+	c.capture_early_logs(route.log_rules)
+	c.log_rules << route.log_rules
+	c.access_targets = access_targets(cfg, site, logs, c.log_rules, c.header_values)
 	c.response_headers << route.response_headers
 	if route.redirect != '' {
 		s.redirect_response(mut c, route)!
@@ -456,7 +463,8 @@ fn (mut s Server) finish_request(mut c Connection) ! {
 	release_runtime(mut c)
 	c.have_request = false
 	c.local = false
-	c.access_log = unsafe { nil }
+	c.access_targets = []AccessTarget{}
+	c.log_rules = []LogRule{}
 	c.response_headers = []HeaderEdit{}
 	c.header_values = HeaderValues{}
 	c.have_response = false

@@ -2,7 +2,9 @@
 
 Run these commands from the repository root. The native build requires a C
 compiler, V, `pkg-config`, OpenSSL development libraries, and the `openssl`
-executable. Go is only needed for the optional comparison/benchmark drivers.
+executable. Go is only needed for the optional comparison/benchmark drivers;
+the three-server comparison also requires Rust/Cargo, CMake, and a C/C++ compiler
+for Raddy's release build. See [benchmark setup](TESTING.md).
 
 ## GitHub Actions
 

@@ -18,7 +18,7 @@ ifneq ($(OPENSSL_PKGCONFIG),)
 export PKG_CONFIG_PATH := $(OPENSSL_PKGCONFIG):$(PKG_CONFIG_PATH)
 endif
 
-.PHONY: all test integration bench bench-workers caddy-bench compare alpine alpine-x86_64 fmt clean install
+.PHONY: all test integration bench bench-workers caddy-bench raddy-bench compare alpine alpine-x86_64 fmt clean install
 all: $(TARGET)
 
 $(TARGET): $(wildcard src/*.v) $(wildcard src/*.h) v.mod
@@ -39,7 +39,11 @@ bench-workers:
 caddy-bench:
 	cd caddy && go build -trimpath -ldflags '-s -w' -o ../caddy-bench ./cmd/caddy
 
-compare: $(TARGET) caddy-bench
+raddy-bench:
+	cd raddy && cargo build --release --locked --bin raddy
+	cp raddy/target/release/raddy$(EXEEXT) raddy-bench$(EXEEXT)
+
+compare: $(TARGET) caddy-bench raddy-bench
 	python3 tests/compare.py $(COMPARE_ARGS)
 
 # Build and test with musl inside x86-64 Alpine, even from an ARM host.

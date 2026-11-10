@@ -4,6 +4,9 @@
 /dist/
 /caddy-bench
 /caddy/
+/raddy-bench
+/raddy-bench.exe
+/raddy/
 /benchmark-results.json
 /benchmark-workers.json
 /src/*_test

@@ -5,6 +5,9 @@ caddy
 vaddy
 vaddy.exe
 caddy-bench
+raddy
+raddy-bench
+raddy-bench.exe
 benchmark-results.json
 benchmark-workers.json
 .vaddy-data

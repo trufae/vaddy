@@ -50,6 +50,10 @@ Caddy ahead in aggregate throughput at 32 clients. Subsequent Vaddy optimization
 improved the separate TLS socket-pair benchmark by **10%** with **11.5% less CPU
 per request**. A fresh TCP comparison is needed to measure the current gap.
 
+The comparison also builds Raddy in release mode. Its current upstream build
+hits connection-allocation failures under sustained load on the measured macOS
+host, so no valid Raddy performance ranking is reported.
+
 [Read the measurements and methodology →](doc/BENCHMARKS.md)
 
 ## Development
@@ -57,7 +61,7 @@ per request**. A fresh TCP comparison is needed to measure the current gap.
 ```sh
 make test          # HTTP, routing, streaming, TLS, workers and mock ACME
 make integration   # Loopback TCP/TLS integration tests
-make compare       # Build ./caddy and compare both servers
+make compare       # Build ./caddy and ./raddy; compare all three servers
 make alpine        # Build/test Alpine x86-64; export dist/vaddy-alpine-x86_64
 ```
 
@@ -65,7 +69,9 @@ GitHub Actions builds and tests Linux, macOS and native Windows, plus the Alpine
 target. See [build instructions](doc/BUILDING.md) for toolchains and dependencies.
 
 The server runs natively in V with small OS/OpenSSL adapters. Go is used only
-by the comparison tools and the Caddy reference build. HTTP/2, HTTP/3 and Caddy's
+by the comparison tools and the Caddy reference build; Rust/Cargo builds the
+Raddy reference. See [benchmark setup](doc/TESTING.md) for both checkouts.
+HTTP/2, HTTP/3 and Caddy's
 full module ecosystem are outside the current scope; see
 [compatibility](doc/COMPATIBILITY.md).
 

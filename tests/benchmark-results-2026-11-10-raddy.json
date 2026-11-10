@@ -1,0 +1,103 @@
+{
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "tls": true,
+  "http_version": "1.1",
+  "response_bytes": 512,
+  "vaddy_workers": 1,
+  "servers": [
+    "caddy",
+    "vaddy",
+    "raddy"
+  ],
+  "runs": 3,
+  "seconds": 10,
+  "config_overrides": {
+    "raddy": "order header after handle"
+  },
+  "results": [
+    {
+      "errors": 0,
+      "mean_latency_ms": 0.1634184238662938,
+      "requests": 61149,
+      "requests_per_second": 6114.848711706431,
+      "wall_seconds": 10.000083875,
+      "server": "caddy",
+      "concurrency": 1,
+      "cpu_seconds": 10.12,
+      "cpu_percent": 101.19915119211937,
+      "cpu_us_per_request": 165.49739161719734,
+      "idle_cpu_percent": 0.0,
+      "idle_rss_mib": 44.140625,
+      "sampled_peak_rss_mib": 53.453125,
+      "valid": true,
+      "run": 1
+    },
+    {
+      "errors": 0,
+      "mean_latency_ms": 0.12217859067395531,
+      "requests": 81771,
+      "requests_per_second": 8177.041943002205,
+      "wall_seconds": 10.000071,
+      "server": "vaddy",
+      "concurrency": 1,
+      "cpu_seconds": 3.42,
+      "cpu_percent": 34.19975718172401,
+      "cpu_us_per_request": 41.82411857504494,
+      "idle_cpu_percent": 0.0,
+      "idle_rss_mib": 7.625,
+      "sampled_peak_rss_mib": 10.734375,
+      "valid": true,
+      "run": 1
+    },
+    {
+      "errors": 12047,
+      "first_error": "status=502 bytes=130 body_error=<nil> COEP=\"\" COOP=\"\"",
+      "mean_latency_ms": 0.19890546717503724,
+      "requests": 11409,
+      "requests_per_second": 1140.84554367741,
+      "wall_seconds": 10.000477333,
+      "server": "raddy",
+      "concurrency": 1,
+      "cpu_seconds": 7.5,
+      "cpu_percent": 74.99642017337695,
+      "cpu_us_per_request": 657.3757559821194,
+      "idle_cpu_percent": 0.0,
+      "idle_rss_mib": 13.90625,
+      "sampled_peak_rss_mib": 16.140625,
+      "valid": false,
+      "server_log": "n failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.871694Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.872293Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.872867Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.873479Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.874133Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.874754Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.875352Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.875955Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.876646Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.877273Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.877849Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.878407Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.878965Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.879547Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.880154Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.880803Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.881465Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.882130Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.884502Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.885145Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.885781Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.886388Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.886972Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.887609Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.888212Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.888854Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.889566Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.890261Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.890915Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.891534Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.892240Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.892935Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.893575Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.894577Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n2026-11-10T18:41:33.895451Z  WARN raddy_proxy::proxy: Error proxying to upstream '127.0.0.1:52669' (attempt 1/1): Transport error connecting to '127.0.0.1:52669': Connection failed: Can't assign requested address (os error 49)\n",
+      "run": 1
+    }
+  ],
+  "provenance": {
+    "caddy": {
+      "source_revision": "8a6ab2b7bb3c6b83ed8d8031d6457375629858d8",
+      "build_command": "go build -trimpath -ldflags '-s -w' -o ../caddy-bench ./cmd/caddy",
+      "binary": "caddy-bench",
+      "binary_bytes": 54161794,
+      "binary_sha256": "25a7e1013819f3d0645a7cfd125c10308af7feb89c8c338c1b5b02ecb629a4e5",
+      "compiler": "go version go1.27.2 darwin/arm64"
+    },
+    "vaddy": {
+      "source_revision": "27a36a084bd8e4ce377b50fc287380a6fc8ffb24",
+      "build_command": "v -prod -cc clang -gc boehm -d use_openssl -o vaddy src",
+      "binary": "vaddy",
+      "binary_bytes": 827744,
+      "binary_sha256": "5cebb3fcb3ea5f0731e966874918b08d950249551c50e464f00bcc175afd3034",
+      "compiler": "V 0.5.2 50766b6",
+      "c_compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+      "openssl": "3.6.5"
+    },
+    "raddy": {
+      "source_revision": "451fd9ffd1c9c7d951c7f86a09ec6a57e5db1625",
+      "build_command": "cargo build --release --locked --bin raddy",
+      "binary": "raddy-bench",
+      "binary_bytes": 26982448,
+      "binary_sha256": "dbcc4b98962bec0e637c281a65202ed577a662d4c7a862ea7e80c94c5d8fe0d6",
+      "compiler": "rustc 1.100.0-beta.13 (3b0202dcd 2026-11-07)",
+      "cargo": "cargo 1.100.0-beta.13 (3acc79c0c 2026-11-05)",
+      "cargo_lock_sha256": "fef8ac69b05ed3ba7d768c02375ce412ce68f1a9e54943f7ab3d89ae18ebec11",
+      "source_modified": false
+    }
+  }
+}

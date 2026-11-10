@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Matched Caddy/Vaddy HTTP/1.1 benchmark. Requires TCP listeners and ps access.
+"""Matched Caddy/Vaddy/Raddy HTTP/1.1 benchmark. Requires TCP listeners and ps access.
 
 Uses an external Go backend and load process. CPU/RSS measurements cover only
 the server being compared; certificate creation and load generation are excluded.
@@ -54,6 +54,15 @@ def stop(proc):
         proc.wait()
 
 
+def comparison_cases(servers, concurrency, runs):
+    for run in range(runs):
+        offset = run % len(servers)
+        names = servers[offset:] + servers[:offset]
+        for clients in concurrency:
+            for name in names:
+                yield run + 1, clients, name
+
+
 def measure(name, binary, config, root, driver, url, concurrency, seconds, size, vaddy_workers):
     data = root / f"data-{name}"
     data.mkdir(exist_ok=True)
@@ -61,6 +70,8 @@ def measure(name, binary, config, root, driver, url, concurrency, seconds, size,
     command = [binary, "run", "--config", str(config), "--adapter", "caddyfile"]
     if name == "vaddy":
         command += ["--data", str(data), "--bind", "127.0.0.1", "--workers", str(vaddy_workers)]
+    elif name == "raddy":
+        env["RADDY_DATA_DIR"] = str(data)
     with (root / f"{name}.log").open("w+") as log:
         server = subprocess.Popen(command, stdout=log, stderr=log, env=env)
         try:
@@ -81,7 +92,11 @@ def measure(name, binary, config, root, driver, url, concurrency, seconds, size,
             idle_cpu = (cpu_seconds(server.pid) - idle_start) / 2 * 100
             idle_rss = rss_kib(server.pid)
             load_command = [str(driver), "-url", url, "-concurrency", str(concurrency), "-size", str(size)]
-            subprocess.run(load_command + ["-seconds", "1"], check=True, stdout=subprocess.DEVNULL)
+            warmup = json.loads(subprocess.check_output(load_command + ["-seconds", "1"], text=True))
+            if warmup["errors"] or not warmup["requests"]:
+                log.seek(0)
+                return dict(warmup, server=name, concurrency=concurrency, valid=False,
+                            phase="warmup", server_log=log.read()[-8000:])
             cpu_start = cpu_seconds(server.pid)
             peak_rss = rss_kib(server.pid)
             load = subprocess.Popen(load_command + ["-seconds", str(seconds)], stdout=subprocess.PIPE, text=True)
@@ -100,9 +115,14 @@ def measure(name, binary, config, root, driver, url, concurrency, seconds, size,
                           idle_cpu_percent=idle_cpu,
                           idle_rss_mib=idle_rss / 1024,
                           sampled_peak_rss_mib=peak_rss / 1024)
-            if result["errors"]:
-                raise RuntimeError(f"invalid benchmark: {result}")
+            result["valid"] = result["errors"] == 0 and result["requests"] > 0
+            if not result["valid"]:
+                log.seek(0)
+                result["server_log"] = log.read()[-8000:]
             return result
+        except Exception as error:
+            log.seek(0)
+            raise RuntimeError(f"{name}: {error}\nServer log (tail):\n{log.read()[-8000:]}") from error
         finally:
             stop(server)
 
@@ -111,6 +131,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--caddy", default=str(ROOT / "caddy-bench"))
     parser.add_argument("--vaddy", default=str(ROOT / "vaddy"))
+    parser.add_argument("--raddy", default=str(ROOT / ("raddy-bench.exe" if os.name == "nt" else "raddy-bench")))
+    parser.add_argument("--servers", nargs="+", choices=("caddy", "vaddy", "raddy"),
+                        default=["caddy", "vaddy", "raddy"], help="servers to compare (default: all three)")
     parser.add_argument("--seconds", type=float, default=10)
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--concurrency", default="1,32")
@@ -119,9 +142,12 @@ def main():
     parser.add_argument("--plain", action="store_true", help="HTTP instead of TLS 1.3")
     parser.add_argument("--output", default="benchmark-results.json")
     args = parser.parse_args()
-    binaries = {"caddy": shutil.which(args.caddy), "vaddy": shutil.which(args.vaddy)}
+    binaries = {name: shutil.which(getattr(args, name)) for name in args.servers}
     if not all(binaries.values()):
-        parser.error("build both binaries first: make && make caddy-bench")
+        missing = ", ".join(name for name, binary in binaries.items() if not binary)
+        parser.error(f"missing binaries: {missing}; build first: make && make caddy-bench raddy-bench")
+    if len(set(args.servers)) != len(args.servers):
+        parser.error("--servers must not contain duplicates")
     concurrency = [int(value) for value in args.concurrency.split(",")]
     if args.seconds <= 0 or args.runs < 1 or args.size < 1 or not 1 <= args.vaddy_workers <= 64 or any(c < 1 or c > 512 for c in concurrency):
         parser.error("positive duration/runs/size, concurrency 1..512 and Vaddy workers 1..64 required")
@@ -148,26 +174,47 @@ def main():
                 subprocess.run([os.getenv("VADDY_OPENSSL", "openssl"), "req", "-new", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost", "-days", "1", "-keyout", str(key), "-out", str(cert)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 config = config.replace("example.org {", f'localhost {{\n        tls "{cert}" "{key}"')
                 url = f"https://localhost:{secure_port}/assets/bench.js"
-            config_path = root / "Caddyfile"
-            config_path.write_text(config)
+            configs = {}
+            config_overrides = {}
+            for name in args.servers:
+                server_config = config
+                if name == "raddy":
+                    # Raddy applies header removal eagerly, before proxying by
+                    # default. Run it after handle so upstream headers are removed.
+                    config_overrides[name] = "order header after handle"
+                    server_config = config.replace("admin off", "admin off\n        " + config_overrides[name])
+                configs[name] = root / f"{name}.Caddyfile"
+                configs[name].write_text(server_config)
             results = []
-            for run in range(args.runs):
-                for c in concurrency:
-                    names = ["caddy", "vaddy"] if run % 2 == 0 else ["vaddy", "caddy"]
-                    for name in names:
-                        result = measure(name, binaries[name], config_path, root, driver, url, c, args.seconds, args.size, args.vaddy_workers)
-                        result["run"] = run + 1
-                        results.append(result)
-                        print(json.dumps(result), flush=True)
-            report = {"platform": platform.platform(), "tls": not args.plain, "http_version": "1.1", "response_bytes": args.size, "vaddy_workers": args.vaddy_workers, "results": results}
+            for run, c, name in comparison_cases(args.servers, concurrency, args.runs):
+                try:
+                    result = measure(name, binaries[name], configs[name], root, driver, url, c, args.seconds, args.size, args.vaddy_workers)
+                except RuntimeError as error:
+                    result = dict(server=name, concurrency=c, valid=False, error=str(error))
+                result["run"] = run
+                results.append(result)
+                print(json.dumps(result), flush=True)
+                # Resource exhaustion can affect subsequent servers on this host.
+                if not result["valid"]:
+                    break
+            report = {"platform": platform.platform(), "tls": not args.plain, "http_version": "1.1", "response_bytes": args.size, "vaddy_workers": args.vaddy_workers, "servers": args.servers, "runs": args.runs, "seconds": args.seconds, "config_overrides": config_overrides, "results": results}
             Path(args.output).write_text(json.dumps(report, indent=2) + "\n")
             print("\nMedians (CPU%=100 means one fully used core; peak RSS sampled every 100ms):")
             print("server  clients     req/s    CPU%    CPU us/req   latency ms   idle MiB   peak MiB")
             for c in concurrency:
-                for name in ("caddy", "vaddy"):
+                for name in args.servers:
                     rows = [row for row in results if row["server"] == name and row["concurrency"] == c]
+                    invalid = sum(not row["valid"] for row in rows)
+                    if invalid:
+                        print(f"{name:7} {c:7} INVALID ({invalid}/{len(rows)} samples failed; see {args.output})")
+                        continue
+                    if len(rows) != args.runs:
+                        print(f"{name:7} {c:7} INCOMPLETE ({len(rows)}/{args.runs} samples)")
+                        continue
                     median = lambda key: statistics.median(row[key] for row in rows)
                     print(f'{name:7} {c:7} {median("requests_per_second"):9.0f} {median("cpu_percent"):7.1f} {median("cpu_us_per_request"):13.2f} {median("mean_latency_ms"):12.3f} {median("idle_rss_mib"):10.1f} {median("sampled_peak_rss_mib"):10.1f}')
+            if any(not row["valid"] for row in results):
+                parser.exit(1, f"Comparison contains invalid samples; saved diagnostics to {args.output}\n")
         finally:
             stop(backend)
 

@@ -60,6 +60,12 @@ func main() {
 	}
 	client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
 	var ok, failed, totalNS atomic.Int64
+	var firstError string
+	var firstErrorOnce sync.Once
+	recordError := func(message string) {
+		failed.Add(1)
+		firstErrorOnce.Do(func() { firstError = message })
+	}
 	start := time.Now()
 	deadline := start.Add(time.Duration(*seconds * float64(time.Second)))
 	var workers sync.WaitGroup
@@ -71,14 +77,14 @@ func main() {
 				t := time.Now()
 				response, err := client.Get(*url)
 				if err != nil {
-					failed.Add(1)
+					recordError(err.Error())
 					time.Sleep(time.Millisecond)
 					continue
 				}
 				n, err := io.Copy(io.Discard, response.Body)
 				response.Body.Close()
 				if err != nil || response.StatusCode != 200 || n != int64(*size) || response.Header.Get("Cross-Origin-Embedder-Policy") != "" || response.Header.Get("Cross-Origin-Opener-Policy") != "" {
-					failed.Add(1)
+					recordError(fmt.Sprintf("status=%d bytes=%d body_error=%v COEP=%q COOP=%q", response.StatusCode, n, err, response.Header.Get("Cross-Origin-Embedder-Policy"), response.Header.Get("Cross-Origin-Opener-Policy")))
 					continue
 				}
 				ok.Add(1)
@@ -93,8 +99,12 @@ func main() {
 	if ok.Load() > 0 {
 		mean = float64(totalNS.Load()) / float64(ok.Load()) / 1e6
 	}
-	json.NewEncoder(os.Stdout).Encode(map[string]any{
+	result := map[string]any{
 		"requests": ok.Load(), "errors": failed.Load(), "wall_seconds": elapsed,
 		"requests_per_second": float64(ok.Load()) / elapsed, "mean_latency_ms": mean,
-	})
+	}
+	if firstError != "" {
+		result["first_error"] = firstError
+	}
+	json.NewEncoder(os.Stdout).Encode(result)
 }

@@ -1,5 +1,40 @@
 # Measurements obtained on 2026-11-10
 
+## Raddy release integration
+
+`make compare` now includes Caddy, Vaddy and Raddy. Raddy v0.9.0 was cloned from
+`fokx/raddy` at `451fd9ffd1c9c7d951c7f86a09ec6a57e5db1625` and built, without
+source changes, using `cargo build --release --locked --bin raddy`. The compiler
+was Rust `1.100.0-beta.13 (3b0202dcd 2026-11-07)`; the resulting `raddy-bench`
+is 26,982,448 bytes (25.73 MiB).
+
+The workload remains HTTP/1.1 over TLS 1.3, the same ECDSA certificate, 512-byte
+responses, the asset rewrite, and removal of both Cross-Origin headers. Raddy's
+generated configuration adds `order header after handle` because its header
+handler otherwise runs before the upstream response exists. This is recorded
+in the JSON; response validation remains enabled for every request.
+
+**No valid Raddy performance ranking is available on this host.** The default
+ten-second load produces HTTP 502 responses with upstream connection errors:
+`Can't assign requested address (os error 49)`. Raddy's
+[HTTP transport opens a new upstream TCP connection for each request](https://github.com/fokx/raddy/blob/451fd9ffd1c9c7d951c7f86a09ec6a57e5db1625/crates/raddy-proxy/src/transport.rs#L288),
+which is consistent with ephemeral-port exhaustion. The same failure occurs
+with cleartext HTTP. Failed responses must not be presented as useful throughput.
+
+This transient host resource exhaustion can also affect subsequent Caddy/Vaddy
+samples. The harness therefore stops on the first failed warmup or measured
+sample, saves its diagnostics, and exits nonzero. It does not print medians for
+failed or incomplete groups. The final TLS attempt is
+[archived here](../tests/benchmark-results-2026-11-10-raddy.json), including build
+provenance. The historical valid Caddy/Vaddy baseline below is retained.
+
+```sh
+make raddy-bench
+make compare  # includes Raddy; currently fails validation on this macOS host
+# Run the original comparison independently, after TCP state has settled:
+python3 tests/compare.py --servers caddy vaddy
+```
+
 ## Caddy versus Vaddy: TCP/TLS baseline
 
 The user ran `make compare` successfully after downloading Caddy's dependencies.
@@ -64,9 +99,10 @@ many features outside Vaddy's current scope.
 ### Reproduce
 
 ```sh
-make compare
-# Customize the workload after building both binaries:
-python3 tests/compare.py --seconds 30 --runs 3 --concurrency 1,32,128 \
+make vaddy caddy-bench
+python3 tests/compare.py --servers caddy vaddy
+# Customize the original two-server workload after building both binaries:
+python3 tests/compare.py --servers caddy vaddy --seconds 30 --runs 3 --concurrency 1,32,128 \
     --output benchmark-results-new.json
 ```
 
@@ -142,8 +178,8 @@ make compare COMPARE_ARGS='--output benchmark-results-optimized.json'
 make compare COMPARE_ARGS='--vaddy-workers 2 --output benchmark-results-workers2.json'
 ```
 
-Both commands rebuild Vaddy as needed and build Caddy. `--vaddy-workers` is saved
-in the report; Caddy keeps its default scheduler settings. The original TCP
+Both commands rebuild Vaddy as needed and build Caddy and Raddy. `--vaddy-workers`
+is saved in the report; Caddy and Raddy keep their default scheduler settings. The original TCP
 baseline remains archived above until new comparable measurements are available.
 
 ## Executable sizes

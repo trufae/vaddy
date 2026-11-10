@@ -1,0 +1,44 @@
+# Caddy's configuration file
+# see: https://caddyserver.com/docs/caddyfile
+# caddy validate --config /etc/caddy/Caddyfile
+#
+# rc-service caddy status
+{
+        # No admin API in use here; closes the 127.0.0.1:2019 listener and drops
+        # the autosave/config bookkeeping. Re-enable if you start using `caddy reload`
+        # (the rc script's reload target) or the /metrics endpoint.
+        admin off
+}
+
+# Replace example.org with your hostname before enabling public HTTPS.
+example.org {
+        #       tls internal
+
+        # equivalent of dist/.htaccess "Header always unset ..."
+        header {
+                -Cross-Origin-Embedder-Policy
+                -Cross-Origin-Opener-Policy
+        }
+
+        # Back-compat: bare /assets/... and /favicon.svg etc. are served by the
+        # backend under /static/. Rewrite them so old cached pages don't 404.
+        @legacy_static path /assets/* /app.js /styles.css /manifest.webmanifest
+        handle @legacy_static {
+                rewrite * /static{uri}
+                reverse_proxy localhost:8001
+        }
+
+        handle /favicon.ico {
+                rewrite * /static/assets/favicon.ico
+                reverse_proxy localhost:8001
+        }
+
+        handle /favicon.svg {
+                rewrite * /static/assets/favicon.svg
+                reverse_proxy localhost:8001
+        }
+
+        handle {
+                reverse_proxy localhost:8001
+        }
+}

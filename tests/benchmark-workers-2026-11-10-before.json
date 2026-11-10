@@ -1,0 +1,83 @@
+{
+  "transport": "anonymous Unix socket pairs",
+  "results": [
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 236220,
+      "requests_per_second": 47239.12413821948,
+      "server_cpu_seconds": 4.986987,
+      "server_cpu_us_per_request": 21.111620523241047,
+      "server_peak_rss_mib": 14.5,
+      "tls": true,
+      "wall_seconds": 5.000516083,
+      "workers": 1,
+      "run": 1
+    },
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 228176,
+      "requests_per_second": 45629.44612684341,
+      "server_cpu_seconds": 8.439781,
+      "server_cpu_us_per_request": 36.988031168922234,
+      "server_peak_rss_mib": 14.625,
+      "tls": true,
+      "wall_seconds": 5.0006305,
+      "workers": 2,
+      "run": 1
+    },
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 229012,
+      "requests_per_second": 45798.24533889689,
+      "server_cpu_seconds": 8.462133000000001,
+      "server_cpu_us_per_request": 36.95060957504411,
+      "server_peak_rss_mib": 14.6875,
+      "tls": true,
+      "wall_seconds": 5.000453583,
+      "workers": 2,
+      "run": 2
+    },
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 223381,
+      "requests_per_second": 44672.17763671567,
+      "server_cpu_seconds": 4.980864,
+      "server_cpu_us_per_request": 22.297617075758456,
+      "server_peak_rss_mib": 12.359375,
+      "tls": true,
+      "wall_seconds": 5.000450209,
+      "workers": 1,
+      "run": 2
+    },
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 233556,
+      "requests_per_second": 46705.333810073455,
+      "server_cpu_seconds": 4.989633,
+      "server_cpu_us_per_request": 21.36375430303653,
+      "server_peak_rss_mib": 12.34375,
+      "tls": true,
+      "wall_seconds": 5.000628,
+      "workers": 1,
+      "run": 3
+    },
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 229607,
+      "requests_per_second": 45916.97934281377,
+      "server_cpu_seconds": 8.468637000000001,
+      "server_cpu_us_per_request": 36.8831830040025,
+      "server_peak_rss_mib": 14.609375,
+      "tls": true,
+      "wall_seconds": 5.000481375,
+      "workers": 2,
+      "run": 3
+    }
+  ]
+}

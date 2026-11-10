@@ -1,0 +1,8 @@
+/vaddy
+/caddy-bench
+/caddy/
+/benchmark-results.json
+/benchmark-workers.json
+/src/*_test
+/tests/__pycache__/
+/.vaddy-data/

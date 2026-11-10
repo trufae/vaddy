@@ -1,0 +1,89 @@
+{
+  "transport": "anonymous Unix socket pairs",
+  "results": [
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 258362,
+      "requests_per_second": 51665.699826716234,
+      "response_bytes": 512,
+      "server_cpu_seconds": 4.883708,
+      "server_cpu_us_per_request": 18.90257855257352,
+      "server_peak_rss_mib": 12.296875,
+      "tls": true,
+      "wall_seconds": 5.000648416,
+      "workers": 1,
+      "run": 1
+    },
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 273618,
+      "requests_per_second": 54718.67121569025,
+      "response_bytes": 512,
+      "server_cpu_seconds": 7.465357,
+      "server_cpu_us_per_request": 27.28386655848665,
+      "server_peak_rss_mib": 14.625,
+      "tls": true,
+      "wall_seconds": 5.000450375,
+      "workers": 2,
+      "run": 1
+    },
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 275264,
+      "requests_per_second": 55047.163170491345,
+      "response_bytes": 512,
+      "server_cpu_seconds": 7.423674999999999,
+      "server_cpu_us_per_request": 26.96929129853522,
+      "server_peak_rss_mib": 14.609375,
+      "tls": true,
+      "wall_seconds": 5.000512,
+      "workers": 2,
+      "run": 2
+    },
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 256998,
+      "requests_per_second": 51394.166351762455,
+      "response_bytes": 512,
+      "server_cpu_seconds": 4.863818,
+      "server_cpu_us_per_request": 18.925509147931113,
+      "server_peak_rss_mib": 12.34375,
+      "tls": true,
+      "wall_seconds": 5.000528625,
+      "workers": 1,
+      "run": 2
+    },
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 245891,
+      "requests_per_second": 49173.648978787016,
+      "response_bytes": 512,
+      "server_cpu_seconds": 4.649326,
+      "server_cpu_us_per_request": 18.90807715613829,
+      "server_peak_rss_mib": 12.3125,
+      "tls": true,
+      "wall_seconds": 5.00046275,
+      "workers": 1,
+      "run": 3
+    },
+    {
+      "clients": 32,
+      "errors": 0,
+      "requests": 270885,
+      "requests_per_second": 54172.16648844507,
+      "response_bytes": 512,
+      "server_cpu_seconds": 7.087603,
+      "server_cpu_us_per_request": 26.164619672554775,
+      "server_peak_rss_mib": 14.5625,
+      "tls": true,
+      "wall_seconds": 5.000446125,
+      "workers": 2,
+      "run": 3
+    }
+  ]
+}

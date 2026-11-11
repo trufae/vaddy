@@ -80,7 +80,10 @@ static int vaddy_connect(struct vaddy_address *addr) {
 }
 static int vaddy_connected(int fd) {
     int err = 0; socklen_t len = sizeof err;
-    return getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) ? -1 : err;
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) || err) return -1;
+    struct sockaddr_storage peer; len = sizeof peer;
+    if (!getpeername(fd, (struct sockaddr *)&peer, &len)) return 0;
+    return errno == ENOTCONN ? 1 : -1;
 }
 static int vaddy_listen(const char *host, const char *port) {
     struct addrinfo hints = {0}, *list, *it; int fd = -1, one = 1, zero = 0;

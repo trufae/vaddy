@@ -7,6 +7,7 @@ import sync.stdatomic
 @[heap]
 struct WorkerPool {
 mut:
+	active_streams i64
 	active   i64
 	stopping i64
 	inboxes  []chan &Connection

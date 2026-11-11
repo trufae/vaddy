@@ -1,6 +1,7 @@
 V ?= v
 VFLAGS ?= -prod -cc clang -gc boehm
 VTESTFLAGS ?= -cc clang -gc boehm -d use_bundled_libgc
+PYTHON ?= python3
 PREFIX ?= /usr/local
 COMPARE_ARGS ?=
 CONTAINER_ENGINE ?= docker
@@ -18,7 +19,7 @@ ifneq ($(OPENSSL_PKGCONFIG),)
 export PKG_CONFIG_PATH := $(OPENSSL_PKGCONFIG):$(PKG_CONFIG_PATH)
 endif
 
-.PHONY: all test integration bench bench-workers caddy-bench raddy-bench compare alpine alpine-x86_64 fmt clean install
+.PHONY: all test integration http2 compatibility bench bench-workers caddy-bench raddy-bench compare alpine alpine-x86_64 fmt clean install
 all: $(TARGET)
 
 .build/regex.o: src/regex.cc src/regex.h
@@ -35,6 +36,9 @@ integration: $(TARGET)
 	python3 tests/integration.py ./$(TARGET)
 	python3 tests/upstream.py ./$(TARGET)
 	python3 tests/reload.py ./$(TARGET)
+
+http2: $(TARGET)
+	$(PYTHON) tests/http2.py ./$(TARGET) $(HTTP2_REFERENCE)
 
 # Caddy is supplied explicitly so comparisons record the actual reference version.
 compatibility: $(TARGET)

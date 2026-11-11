@@ -56,6 +56,19 @@ static int vaddy_cert_host(const char *path, const char *host) {
     int ok = X509_check_host(cert, host, 0, X509_CHECK_FLAG_NEVER_CHECK_SUBJECT, NULL);
     X509_free(cert); return ok == 1;
 }
+static int vaddy_alpn_select(SSL *ssl, const unsigned char **out, unsigned char *outlen,
+                             const unsigned char *in, unsigned int inlen, void *arg) {
+    (void)ssl; (void)arg;
+    static const unsigned char protocols[] = {2, 'h', '2', 8, 'h','t','t','p','/','1','.','1'};
+    if (SSL_select_next_proto((unsigned char **)out, outlen, protocols, sizeof protocols, in, inlen)
+        != OPENSSL_NPN_NEGOTIATED) return SSL_TLSEXT_ERR_ALERT_FATAL;
+    return SSL_TLSEXT_ERR_OK;
+}
+static int vaddy_tls_is_h2(void *ssl) {
+    const unsigned char *protocol; unsigned int length;
+    SSL_get0_alpn_selected(ssl, &protocol, &length);
+    return length == 2 && !memcmp(protocol, "h2", 2);
+}
 static void *vaddy_tls_context(const char *cert, const char *key) {
     SSL_CTX *ctx = SSL_CTX_new(TLS_server_method());
     if (!ctx) return NULL;
@@ -64,6 +77,7 @@ static void *vaddy_tls_context(const char *cert, const char *key) {
     SSL_CTX_set_mode(ctx, SSL_MODE_RELEASE_BUFFERS | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_SERVER);
     SSL_CTX_sess_set_cache_size(ctx, 1024);
+    SSL_CTX_set_alpn_select_cb(ctx, vaddy_alpn_select, NULL);
     if (!SSL_CTX_use_certificate_chain_file(ctx, cert) || !SSL_CTX_use_PrivateKey_file(ctx, key, SSL_FILETYPE_PEM) || !SSL_CTX_check_private_key(ctx)) { SSL_CTX_free(ctx); return NULL; }
     return ctx;
 }

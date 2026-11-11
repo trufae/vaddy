@@ -119,3 +119,21 @@ invalid syntax, inaccessible log destinations, missing trust roots and listener
 changes. The original integration suite also verifies concurrent JSON access logs.
 The V socket-pair suite checks header edit bounds, redirect ordering, per-request
 logs, interrupted responses and lifetime management of retired configurations.
+
+## HTTP/2 wire tests
+
+Install the pinned independent test client in a virtual environment:
+
+```sh
+python3 -m venv .tools/http2-tests
+.tools/http2-tests/bin/pip install -r tests/requirements.txt
+make http2 PYTHON=.tools/http2-tests/bin/python
+# Also exercise the common cases against the local Caddy reference:
+make http2 PYTHON=.tools/http2-tests/bin/python HTTP2_REFERENCE=./caddy-bench
+```
+
+Covers ALPN and HTTP/1 fallback, multiplexing, bounded flow control, large
+uploads/downloads, chunked bodies, duplicate cookies, HEAD, cancelled requests,
+early redirects and HTTP/2 log accounting. Vaddy-specific checks exercise reload
+snapshots on a live connection and graceful GOAWAY with an active response
+(the latter is skipped on Windows, where terminate is a forced stop).

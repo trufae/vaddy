@@ -13,7 +13,7 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | Rewriting | `rewrite * /target`, including `{uri}` and preserved query strings |
 | Headers | `header`, `request_header`, proxy `header_up`/`header_down`; set/append/delete, response defaults/defer, RE2 replacements, wildcard deletion, path and response conditions |
 | Proxy | One HTTP/HTTPS upstream per route, verified TLS, preserved HTTP Host (HTTPS uses the upstream Host), regenerated X-Forwarded-For/Host/Proto, hop-by-hop header removal |
-| HTTP | HTTP/1.1, HTTP/1.0 clients with connection close, keep-alive, sequential pipelining, HEAD, informational responses, length/chunked bodies, EOF-delimited responses |
+| HTTP | HTTP/2 over TLS with ALPN, concurrent streams and flow control; HTTP/1.1, HTTP/1.0 clients with connection close, keep-alive, sequential pipelining, HEAD, informational responses, length/chunked bodies, EOF-delimited responses |
 | Streaming | Bounded upload/download queues, backpressure, SSE, WebSocket upgrades |
 | TLS | OpenSSL TLS 1.2+, automatic public/internal certificates, live context replacement |
 | Access logs | Named JSON/console logs, filters, custom fields, levels and path-based skipping; stderr/stdout/discard/files; file rotation, gzip and retention; Caddy-style metadata/body counts |
@@ -99,7 +99,11 @@ tracking them here does not imply that removing those restrictions is desirable.
 
 ### Protocols and proxy operation
 
-- [ ] **CADDY-016 — HTTP/2 serving:** accept and serve HTTP/2 client connections.
+- [x] **CADDY-016 — HTTP/2 serving:** accept and serve HTTP/2 over TLS via ALPN.
+  Multiplexed proxy requests, bounded upload/download queues, stream cancellation,
+  flow control, request-generation reloads, graceful GOAWAY and HTTP/1 fallback.
+  `make http2` uses an independent hyper-h2 client; the common wire cases also pass
+  against Caddy `8a6ab2b7bb3c6b83ed8d8031d6457375629858d8`.
 - [ ] **CADDY-017 — HTTP/3 serving:** accept and serve HTTP/3/QUIC client connections.
 - [ ] **CADDY-018 — Additional backend protocols:** support HTTP/2/h2c and
   HTTP/2-based gRPC proxying, plus Caddy's HTTP/3 upstream option.
@@ -188,6 +192,13 @@ tracking them here does not imply that removing those restrictions is desirable.
   separate, expanding scope rather than a finite built-in feature list.
 
 ### Compatibility verification
+
+- [ ] **CADDY-057 — Additional HTTP/2 options:** cleartext HTTP/2 listeners (h2c),
+  extended CONNECT/WebSockets over HTTP/2, forwarding/editing HTTP/2 trailers,
+  and Caddy's protocol/server tuning options. Current limits are 64 concurrent
+  streams per connection, the configured maximum request count, 16 KiB headers,
+  and a global active-stream limit equal to `--max-connections`. HTTP/2 backends
+  and gRPC remain CADDY-018. The wire engine adds a libnghttp2 dependency.
 
 - [ ] **CADDY-050 — Differential test coverage:** run identical configurations
   and requests against Vaddy and Caddy, comparing accepted syntax, routing,

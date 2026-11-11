@@ -118,7 +118,10 @@ static int64_t vaddy_connect(struct vaddy_address *addr) {
 }
 static int vaddy_connected(int64_t fd) {
     int error = 0, len = sizeof error;
-    return getsockopt((SOCKET)fd, SOL_SOCKET, SO_ERROR, (char *)&error, &len) ? -1 : error;
+    if (getsockopt((SOCKET)fd, SOL_SOCKET, SO_ERROR, (char *)&error, &len) || error) return -1;
+    struct sockaddr_storage peer; len = sizeof peer;
+    if (!getpeername((SOCKET)fd, (struct sockaddr *)&peer, &len)) return 0;
+    return WSAGetLastError() == WSAENOTCONN ? 1 : -1;
 }
 static int64_t vaddy_listen(const char *host, const char *port) {
     struct addrinfo hints = {0}, *list, *it; SOCKET fd = INVALID_SOCKET;

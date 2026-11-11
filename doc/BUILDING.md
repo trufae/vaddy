@@ -1,7 +1,7 @@
 # Platform builds and CI
 
 Run these commands from the repository root. The native build requires C and C++17
-compilers, V, `pkg-config`, OpenSSL, RE2 and zlib development libraries, and the `openssl`
+compilers, V, `pkg-config`, OpenSSL, RE2, zlib and nghttp2 development libraries, and the `openssl`
 executable. Go is only needed for the optional comparison/benchmark drivers;
 the three-server comparison also requires Rust/Cargo, CMake, and a C/C++ compiler
 for Raddy's release build. See [benchmark setup](TESTING.md).
@@ -56,7 +56,7 @@ Use an MSYS2 **UCRT64** shell with these packages:
 
 ```sh
 pacman -S --needed git make mingw-w64-ucrt-x86_64-gcc \
-    mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-re2 mingw-w64-ucrt-x86_64-zlib \
+    mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-re2 mingw-w64-ucrt-x86_64-zlib mingw-w64-ucrt-x86_64-nghttp2 \
     mingw-w64-ucrt-x86_64-python
 sh ci/bootstrap-v.sh .tools/v
 make V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
@@ -65,7 +65,7 @@ make integration V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
 ```
 
 The result is `vaddy.exe`, using Winsock rather than WSL or a POSIX-emulation
-runtime. Run it with the matching UCRT64 OpenSSL, RE2, zlib and C++ runtime DLLs on `PATH`; automatic
+runtime. Run it with the matching UCRT64 OpenSSL, RE2, zlib, nghttp2 and C++ runtime DLLs on `PATH`; automatic
 certificate management also needs the UCRT64 `openssl.exe`. The CI job executes
 within that environment and does not assemble a redistributable Windows bundle.
 
@@ -111,7 +111,7 @@ fully static binary. On a matching Alpine system, install its library runtimes
 and CA trust store:
 
 ```sh
-apk add --no-cache openssl re2 libstdc++ zlib ca-certificates
+apk add --no-cache openssl re2 libstdc++ zlib nghttp2-libs ca-certificates
 chmod +x ./vaddy-alpine-x86_64
 ./vaddy-alpine-x86_64 validate --config ./Caddyfile
 ```

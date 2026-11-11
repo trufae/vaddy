@@ -7,7 +7,7 @@ The checked-in hostname, `example.org`, is a placeholder for a domain you contro
 ## Build and run
 
 Dependencies: a recent V compiler with `json2`, C and C++17 compilers, `pkg-config`,
-OpenSSL 3, RE2 and zlib development libraries, and the `openssl` executable. Tested with
+OpenSSL 3, RE2, zlib and nghttp2 development libraries, and the `openssl` executable. Tested with
 V `0.5.2 b7b4dd4` on arm64 macOS. The event backend uses epoll on Linux, kqueue
 on macOS/BSD, and Winsock polling on Windows. See [platform builds and CI](BUILDING.md)
 for the pinned compiler, Windows setup, Alpine output, and validation coverage.

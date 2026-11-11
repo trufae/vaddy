@@ -77,7 +77,7 @@ fn request_log(c &Connection) LogRequest {
 		remote_ip: c.ip
 		remote_port: c.remote_port
 		client_ip: c.ip
-		proto: c.request.start.all_after_last(' ')
+		proto: if c.h2_id != 0 { 'HTTP/2.0' } else { c.request.start.all_after_last(' ') }
 		method: c.request.method
 		host: c.request.host
 		uri: c.request.uri

@@ -24,6 +24,16 @@ mut:
 @[heap]
 struct Connection {
 mut:
+	h2 voidptr
+	h2_streams map[int]&Connection
+	h2_id int
+	h2_parent voidptr
+	h2_state &C.vaddy_h2_stream = unsafe { nil }
+	h2_chunked_input bool
+	h2_input_end bool
+	h2_headers_sent bool
+	h2_output_end bool
+	h2_output_frame Framing
 	runtime &Runtime = unsafe { nil }
 	backend_generation i64
 	access_targets []AccessTarget
@@ -140,6 +150,11 @@ fn (mut s Server) close_backend(mut c Connection) {
 
 fn (mut s Server) close_client(mut c Connection) {
 	if c.fd < 0 { return }
+	if c.h2 != unsafe { nil } {
+		for id in c.h2_streams.keys() { s.close_h2_stream(mut c, id) }
+		C.vaddy_h2_free(c.h2)
+		c.h2 = unsafe { nil }
+	}
 	s.log_access(mut c, false)
 	release_runtime(mut c)
 	s.close_backend(mut c)
@@ -451,6 +466,14 @@ fn (mut s Server) backend_eof(mut c Connection) ! {
 }
 
 fn (mut s Server) finish_request(mut c Connection) ! {
+	if c.h2_id != 0 {
+		if c.have_response && c.response.frame.done && c.to_client.len() == 0 && c.h2_headers_sent && !c.h2_output_end {
+			C.vaddy_h2_end(c.h2_parent, c.h2_state)
+			c.h2_output_end = true
+			s.close_backend(mut c)
+		}
+		return
+	}
 	if c.local && !c.close_after && !c.request.frame.done { return }
 	if !c.have_response || !c.response.frame.done || c.to_client.len() > 0 { return }
 	s.log_access(mut c, true)
@@ -481,6 +504,10 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		if result == 1 {
 			c.handshake = false
 			c.last_activity = mono_ms()
+			if C.vaddy_tls_is_h2(c.tls) != 0 {
+				c.h2 = C.vaddy_h2_new(s.opts.max_keepalive_requests)
+				if c.h2 == unsafe { nil } { return error('cannot create HTTP/2 session') }
+			}
 		} else {
 			err := C.vaddy_tls_error(c.tls, result)
 			if err !in [2, 3] {
@@ -491,9 +518,13 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 			return
 		}
 	}
+	if c.h2 != unsafe { nil } { s.pump_h2(mut c, event_fd)!; return }
 	if c.connecting && event_fd == c.backend {
-		if C.vaddy_connected(c.backend) != 0 { return error('upstream connect failed') }
-		c.connecting = false
+		// A queued event can refer to a descriptor closed and reused by another
+		// HTTP/2 stream; SO_ERROR == 0 alone does not prove connect completed.
+		connected := C.vaddy_connected(c.backend)
+		if connected < 0 { return error('upstream connect failed') }
+		c.connecting = connected != 0
 	}
 	if c.backend_handshake && !c.connecting {
 		result := C.vaddy_upstream_handshake(c.backend_tls)
@@ -510,11 +541,12 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 	// Drain each ready input until EAGAIN, then wait for another readiness event.
 	// OpenSSL may have records buffered even when the kernel socket is no longer
 	// readable, so those records must also be allowed to drive the client read.
-	mut client_readable := event_fd == c.fd || (c.tls != unsafe { nil } && C.vaddy_tls_has_pending(c.tls) != 0)
+	mut client_readable := c.h2_id == 0 && (event_fd == c.fd || (c.tls != unsafe { nil } && C.vaddy_tls_has_pending(c.tls) != 0))
 	mut backend_readable := event_fd == c.backend || (c.backend_tls != unsafe { nil } && C.vaddy_tls_has_pending(c.backend_tls) != 0)
 	for _ in 0 .. 8 {
 		mut progress := false
-		if c.to_client.len() > 0 {
+		if c.h2_id != 0 { h2_egress(mut c)! }
+		if c.h2_id == 0 && c.to_client.len() > 0 {
 			data := c.to_client.bytes()
 			mut n := 0
 			if c.tls != unsafe { nil } {
@@ -643,6 +675,7 @@ fn (mut s Server) update_interests(mut c Connection) ! {
 		s.close_client(mut c)
 		return
 	}
+	if c.h2 != unsafe { nil } { s.update_h2_interests(mut c)!; return }
 	mut flags := 0
 	if c.handshake {
 		flags = c.handshake_want
@@ -653,6 +686,10 @@ fn (mut s Server) update_interests(mut c Connection) ! {
 		}
 	}
 	s.watch(c.fd, flags)!
+	s.update_backend_interests(mut c)!
+}
+
+fn (mut s Server) update_backend_interests(mut c Connection) ! {
 	if c.backend >= 0 {
 		mut back := 0
 		if c.connecting {
@@ -721,6 +758,16 @@ fn (mut s Server) tick() {
 		}
 	}
 	for _, mut c in s.clients.clone() {
+		if c.h2 != unsafe { nil } {
+			for _, stream in c.h2_streams {
+				if now - stream.last_activity > i64(s.opts.idle_timeout) * 1000 || ((stream.connecting || stream.backend_handshake || !stream.have_response) && now - stream.started > i64(s.opts.header_timeout) * 1000) {
+					C.vaddy_h2_reset(c.h2, stream.h2_id, 8)
+				}
+			}
+			s.pump_h2(mut c, -1) or { c.dead = true }
+			s.update_interests(mut c) or { c.dead = true }
+			if c.dead { s.close_client(mut c); continue }
+		}
 		in_headers := c.handshake || (!c.have_request && c.request_buffer.len() > 0) || c.connecting || c.backend_handshake
 		if now - c.last_activity > i64(s.opts.idle_timeout) * 1000 || (in_headers && now - c.started > i64(s.opts.header_timeout) * 1000) || (s.draining && now - s.drain_started > 10000) {
 			s.close_client(mut c)
@@ -801,7 +848,13 @@ fn (mut s Server) serve_events() ! {
 				s.https_fd = -1
 			}
 			if s.control_fd >= 0 { s.drain_incoming() }
-			for _, mut c in s.clients.clone() { if !c.have_request { s.close_client(mut c) } }
+			for _, mut c in s.clients.clone() {
+				if c.h2 != unsafe { nil } {
+					C.vaddy_h2_drain(c.h2)
+					s.pump_h2(mut c, -1) or { c.dead = true }
+					s.update_interests(mut c) or { s.close_client(mut c) }
+				} else if !c.have_request { s.close_client(mut c) }
+			}
 		}
 		if s.draining && s.clients.len == 0 { break }
 		n := C.vaddy_wait(s.queue, &events[0], events.len, 1000)
@@ -823,7 +876,7 @@ fn (mut s Server) serve_events() ! {
 			owner := s.owners[event.fd] or { continue }
 			mut c := s.clients[owner] or { continue }
 			s.pump(mut c, event.fd) or {
-				if c.have_response || c.write_len > 0 {
+				if c.h2 != unsafe { nil } || c.have_response || c.write_len > 0 {
 					c.dead = true
 				} else {
 					s.respond(mut c, 502, 'Bad Gateway', 'Bad Gateway\n', '')

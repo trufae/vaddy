@@ -36,7 +36,45 @@ The jobs build the compiler from source instead of selecting a moving V release.
 The operating-system package repositories and action major-version tags can
 still receive updates; the complete environment is not bit-for-bit pinned.
 
-To build that compiler locally into a new directory:
+## Stock V release check
+
+[setup-v.yml](../.github/workflows/setup-v.yml) is a second, independent workflow.
+Instead of bootstrapping the fork, it installs an official release with
+[`vlang/setup-v`](https://github.com/vlang/setup-v) and runs the same build,
+unit tests, Caddyfile validation, integration test, and HTTP/2, encoding and
+file suites. It runs on Ubuntu 24.04 and macOS 14 (the release zips have no
+arm64 Windows asset). It proves Vaddy does not need the fork's patches.
+
+```yaml
+- uses: vlang/setup-v@v1.7
+  with:
+    version: 0.5.2   # tag, branch or SHA from the V repository
+    cache: true
+```
+
+Only `version` is passed: the action installs whatever OS and architecture the
+runner is. Choose the OS in `runs-on`/`matrix.os`, and pass `architecture`
+(e.g. `x86_64`, `arm64`, `aarch64`, `riscv64`) only when it must differ from the
+runner. Other inputs: `version-file` (e.g. `.v-version`), `stable: true` for the
+latest release, `check-latest: true`, `path`, `clean`; outputs are `v-bin-path`,
+`bin-path`, `version` and `architecture`.
+
+The release is pinned in the workflow and mirrored by `V_VERSION` in
+[ci/toolchain.env](../ci/toolchain.env). Override it for a manual run with the
+`v-version` dispatch input. Pinning matters: installing the default branch
+builds the compiler from source and can fail on a stale prebuilt `vc`
+(`unknown function: ...`).
+
+To try that release locally into a separate directory:
+
+```sh
+curl -L -o /tmp/v.zip https://github.com/vlang/v/releases/download/0.5.2/v_macos_arm64.zip
+unzip -q /tmp/v.zip -d .tools && mv .tools/v .tools/v-0.5.2
+make V="$PWD/.tools/v-0.5.2/v"
+make test V="$PWD/.tools/v-0.5.2/v"
+```
+
+To build the pinned fork's compiler locally into a new directory:
 
 ```sh
 sh ci/bootstrap-v.sh .tools/v

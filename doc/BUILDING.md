@@ -42,7 +42,7 @@ The publishing job alone receives `contents: write` and uses the built-in
 
 Each release contains five archives: Windows x86-64, macOS arm64 and x86-64,
 Ubuntu 24.04 x86-64 and Alpine 3.24 x86-64, plus `SHA256SUMS`. The archive names
-stay constant so the README's `/releases/latest/download/` links keep working.
+stay constant so `/releases/latest/download/` links keep working.
 Numeric tags are published as regular releases and marked latest, with generated
 release notes. Tag builds are not cancelled by subsequent pushes.
 

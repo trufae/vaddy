@@ -161,6 +161,7 @@ def package(target, binary, destination):
         stage = Path(temporary) / name
         stage.mkdir()
         copy(ROOT / 'Caddyfile', stage / 'Caddyfile')
+        copy(ROOT / 'LICENSE', stage / 'LICENSE')
         copy(ROOT / 'doc/INSTALL.md', stage / 'README.md')
         copy(ROOT / 'doc/THIRD_PARTY.md', stage / 'THIRD_PARTY.md')
         shutil.copytree(ROOT / 'doc/licenses', stage / 'licenses')

@@ -1,54 +1,59 @@
+<div align="center">
+
 # Vaddy
 
+**Small footprint. Automatic HTTPS. Written in V.**
+
 [![Build and test](https://github.com/trufae/vaddy/actions/workflows/ci.yml/badge.svg)](https://github.com/trufae/vaddy/actions/workflows/ci.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Automatic HTTPS. Streaming reverse proxy. Written in V.**
+[Releases](https://github.com/trufae/vaddy/releases) · [Getting started](doc/INSTALL.md) · [Feature parity](doc/COMPATIBILITY.md) · [Benchmarks](doc/BENCHMARKS.md)
 
-[Usage](doc/USAGE.md) · [Builds & CI](doc/BUILDING.md) · [Compatibility](doc/COMPATIBILITY.md) ·
-[Benchmarks](doc/BENCHMARKS.md) · [Performance lessons](doc/PERFLEARN.md) ·
-[Testing](doc/TESTING.md)
+</div>
 
-Vaddy is a small reverse proxy with Caddyfile configuration, automatic TLS,
-and a focus on low CPU and memory use. It implements a focused subset of Caddy;
-unsupported directives fail validation.
+Vaddy is a small web server and streaming reverse proxy written in [V](https://vlang.io/),
+inspired by [Caddy](https://caddyserver.com/). It brings Caddyfile configuration,
+automatic HTTPS and low resource use to a focused set of everyday hosting tasks.
 
-| Feature | What you get |
-| --- | --- |
-| Automatic HTTPS | HTTP on **80**, HTTPS on **443**, ACME HTTP-01 and certificate renewal |
-| Routing | Path matchers, rewrites, custom redirects and request/response header editing |
-| Backends | HTTP and verified HTTPS, custom CA roots and TLS server names |
-| Operations | JSON access logs and transactional configuration reloads |
-| Streaming | Bounded buffers, backpressure, SSE and WebSocket upgrades |
-| HTTP/2 | Automatic TLS negotiation, concurrent streams and flow control |
-| Compression | Streaming gzip and Zstandard, negotiation and cache headers |
-| Static websites | Document roots, indexes, directory listings, byte ranges and cache validation |
-| Concurrency | epoll/kqueue/Windows polling, optional workers and a global connection limit |
-| Certificates | Public ACME, a local development CA, manual certificates and live reload |
+- **HTTPS out of the box** — automatic certificates and renewal, local development
+  certificates, and verified HTTPS backends.
+- **Serve and stream** — static files, HTTP/2, gzip and Zstandard, WebSockets and SSE.
+- **Route and operate** — path routing, rewrites, redirects, header editing,
+  access logs and transactional configuration reloads.
 
-## Download
+Vaddy implements a subset of Caddy. The [feature-parity checklist](doc/COMPATIBILITY.md)
+tracks supported behavior and remaining gaps, including HTTP/3, load balancing
+and Caddy's module ecosystem. Unsupported directives fail validation.
 
-Download a ready-built archive from the [latest release](https://github.com/trufae/vaddy/releases/latest):
+## Light on resources
 
-| Platform | Download |
-| --- | --- |
-| Windows x86-64 | [ZIP](https://github.com/trufae/vaddy/releases/latest/download/vaddy-windows-x86_64.zip) |
-| macOS Apple Silicon | [tar.gz](https://github.com/trufae/vaddy/releases/latest/download/vaddy-macos-arm64.tar.gz) |
-| macOS Intel | [tar.gz](https://github.com/trufae/vaddy/releases/latest/download/vaddy-macos-x86_64.tar.gz) |
-| Linux x86-64 (Ubuntu 24.04) | [tar.gz](https://github.com/trufae/vaddy/releases/latest/download/vaddy-linux-x86_64.tar.gz) |
-| Alpine Linux x86-64 (3.24) | [tar.gz](https://github.com/trufae/vaddy/releases/latest/download/vaddy-alpine-x86_64.tar.gz) |
+A snapshot from the **November 11, 2026** benchmark: 32 concurrent clients,
+512-byte proxy responses, HTTP/1.1 over TLS 1.3, on a shared macOS arm64 host
+with 10 logical CPUs. Values are medians of three 10-second runs.
 
-Windows and macOS archives include native libraries and OpenSSL. Linux and Alpine
-use system runtime packages. See [installation instructions](doc/INSTALL.md) and
-[SHA-256 checksums](https://github.com/trufae/vaddy/releases/latest/download/SHA256SUMS).
-Downloads become available when the first numeric tag finishes building.
+| Measurement | Vaddy · 1 worker | Caddy · default settings |
+| --- | ---: | ---: |
+| Throughput | **21,991 req/s** | 28,028 req/s |
+| CPU under load¹ | **98.7%** | 361.2% |
+| CPU time per request | **44.88 µs** | 128.86 µs |
+| Idle memory (RSS) | **14.38 MiB** | 43.86 MiB |
+| Sampled peak memory (RSS) | **38.70 MiB** | 67.16 MiB |
 
-## Build from source
+¹ 100% means one fully used CPU core. CPU and memory cover the server process only.
+Vaddy defaults to one event-loop worker; `--workers N` enables more.
+Caddy achieved higher total throughput in this run, using more CPU cores.
+These are local measurements, not minimum hardware requirements or production
+capacity estimates; compression and access logging were disabled.
+See [benchmarks and methodology](doc/BENCHMARKS.md) for revisions, raw data and reproduction.
 
-Requires V, C and C++17 compilers, `pkg-config`, OpenSSL 3, RE2, zlib, nghttp2 and Zstandard development libraries, and the
-`openssl` executable. The default build uses Clang and Boehm GC.
+## Get started
 
-Configure your domain and backend in [Caddyfile](Caddyfile). A minimal site looks
-like this; replace `example.org` with your own domain:
+Find builds for Linux, Alpine, macOS and Windows on the
+[releases page](https://github.com/trufae/vaddy/releases).
+Follow the [installation guide](doc/INSTALL.md) for your platform, or
+[build from source](doc/BUILDING.md) with `make`.
+
+Save a `Caddyfile` with your domain and backend:
 
 ```caddyfile
 example.org {
@@ -57,53 +62,22 @@ example.org {
 ```
 
 ```sh
-make
-./vaddy validate --config ./Caddyfile
-sudo ./vaddy run --config ./Caddyfile --data /var/lib/vaddy
+./vaddy validate --config Caddyfile
+./vaddy run --config Caddyfile --data ./data
 ```
 
-For public certificates, point the domain's DNS at the server and make TCP ports
-**80 and 443** reachable. Stop any existing listener on those ports first.
-See the [usage guide](doc/USAGE.md) for local TLS, port permissions, staging,
-worker counts and certificate storage.
+For public HTTPS, point your domain's DNS at the server and allow incoming TCP
+ports **80 and 443**, with permission for Vaddy to bind them.
+See [usage](doc/USAGE.md) for local TLS, custom ports and configuration examples.
 
-## Performance
+## Explore
 
-The latest optimizations improved median TCP/TLS throughput by **12.0%** and
-reduced CPU per request by **11.0%** at 32 clients versus the preceding feature
-build. Idle memory fell from **20.5 to 14.4 MiB**, and sampled peak memory from
-**40.9 to 38.7 MiB**. A 64 KiB response check also improved throughput by **13.4%**.
-All 2.88 million measured requests passed. Vaddy still used less CPU and memory
-than the Caddy reference, while Caddy delivered more aggregate throughput.
-These are short local HTTP/1.1 proxy measurements with compression and logging
-disabled; the HTTP/2, compression, file-serving and log compatibility tests pass.
+- [Usage](doc/USAGE.md) — configuration, certificates, workers and reloads.
+- [Building](doc/BUILDING.md) — dependencies, platform builds and CI.
+- [Testing](doc/TESTING.md) — integration tests and reproducible comparisons.
+- [Performance lessons](doc/PERFLEARN.md) — profiling findings and implementation tradeoffs.
 
-The comparison also builds Raddy in release mode. Its current upstream build
-hits connection-allocation failures under sustained load on the measured macOS
-host, so no valid Raddy performance ranking is reported.
+## License
 
-[Read the measurements and methodology →](doc/BENCHMARKS.md)
-
-## Development
-
-```sh
-make test          # HTTP, routing, streaming, TLS, workers and mock ACME
-make integration   # TCP/TLS, HTTPS backends, access logs and live reloads
-make compare       # Build ./caddy and ./raddy; compare all three servers
-make alpine        # Build/test Alpine x86-64; export dist/vaddy-alpine-x86_64
-```
-
-GitHub Actions builds and tests Linux, macOS and native Windows, plus the Alpine
-target. A separate workflow also checks compatibility with the official V release
-binaries. See [build instructions](doc/BUILDING.md) for toolchains and dependencies.
-
-The server runs natively in V with small OS/OpenSSL adapters. Go is used only
-by the comparison tools and the Caddy reference build; Rust/Cargo builds the
-Raddy reference. See [benchmark setup](doc/TESTING.md) for both checkouts.
-HTTP/3, HTTP/2 backends and Caddy's
-full module ecosystem remain unsupported; see
-[compatibility](doc/COMPATIBILITY.md).
-
-Implementation details, reproducible benchmarks and optimization findings live
-in [doc/](doc/). Start with [PERFLEARN.md](doc/PERFLEARN.md) when continuing
-performance work.
+[MIT](LICENSE) · Copyright © 2026 pancake.
+Third-party components retain their own licenses; see [third-party notices](doc/THIRD_PARTY.md).

@@ -126,6 +126,9 @@ fn prepare_access_logs(cfg Config) !map[string]&AccessLog {
 				'discard' { os.File{} }
 				else { open_log_file(config.output)! }
 			}
+			// Validate file outputs without leaving an idle generation holding a
+			// handle that prevents another writer from rotating the file on Windows.
+			if output.starts_with('file:') { file.close() }
 			logs[output] = &AccessLog{file: file, owned: output.starts_with('file:'), options: config.output, opened: time.sys_mono_now()}
 		}
 	}

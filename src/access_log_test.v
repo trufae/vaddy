@@ -42,6 +42,30 @@ fn test_log_output_validation_and_disabled_rotation() ! {
 	}
 }
 
+fn test_log_file_replacement_between_writes() ! {
+	dir := os.join_path(os.temp_dir(), 'vaddy-log-replace-${os.getpid()}')
+	defer { os.rmdir_all(dir) or {} }
+	path := os.join_path(dir, 'access.log')
+	cfg := parse_config('http://localhost {\n log {\n output file "${path}"\n }\n redir * /new\n}')!
+	logs := prepare_access_logs(cfg)!
+	defer { close_access_logs(logs) }
+	mut logger := logs[cfg.sites[0].logs[0].output.output]!
+	logger.options.roll_size = 64
+	// Preparation, successful writes and rejected writes must all allow an
+	// external rotation, including on Windows where open handles block renames.
+	os.rename(path, path + '.prepared')!
+	logger.write_line('before replacement')!
+	os.rename(path, path + '.written')!
+	assert os.read_lines(path + '.written')! == ['before replacement']
+	if _ := logger.write_line('x'.repeat(64)) {
+		assert false, 'oversized log record must be rejected'
+	} else { assert err.msg() == 'log record exceeds roll_size' }
+	os.rename(path, path + '.rejected')!
+	assert os.file_size(path + '.rejected') == 0
+	logger.write_line('after replacement')!
+	assert os.read_lines(path)! == ['after replacement']
+}
+
 fn test_log_filters_preserve_repeated_query_values_and_redact_arrays() ! {
 	filter := LogFilter{path: ['request', 'uri'], kind: 'query', actions: [Directive{args: ['replace', 'token', 'HIDDEN']}, Directive{args: ['delete', 'remove']}]}
 	assert filter_log_string('/?token=one&token=two&remove=yes', filter)! == '/?token=HIDDEN&token=HIDDEN'

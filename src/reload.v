@@ -38,6 +38,9 @@ fn load_config(input string, opts Options) !Config {
 
 fn prepare_runtime(cfg Config, id i64, log_mutex &sync.Mutex) !&Runtime {
 	backends := prepare_backends(cfg)!
+	// Even validation briefly opens log files; serialize it with rotations.
+	log_mutex.lock()
+	defer { log_mutex.unlock() }
 	logs := prepare_access_logs(cfg) or {
 		free_backends(backends)
 		return err

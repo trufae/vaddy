@@ -1,5 +1,7 @@
 # Vaddy
 
+[![Build and test](https://github.com/trufae/vaddy/actions/workflows/ci.yml/badge.svg)](https://github.com/trufae/vaddy/actions/workflows/ci.yml)
+
 **Automatic HTTPS. Streaming reverse proxy. Written in V.**
 
 [Usage](doc/USAGE.md) · [Builds & CI](doc/BUILDING.md) · [Compatibility](doc/COMPATIBILITY.md) ·

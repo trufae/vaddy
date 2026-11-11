@@ -146,10 +146,10 @@ fn (mut logger AccessLog) write_line(line string) ! {
 		return
 	}
 	path := logger.options.output.trim_string_left('file:')
-	// Reopen under the shared generation mutex: rotation, reloads and external
-	// log replacement must never leave a worker appending to an old descriptor.
-	logger.file.close()
+	// Hold the file only while writing under the shared generation mutex.
+	// Idle writers must not block Windows renames or retain a replaced file.
 	logger.file = open_log_file(logger.options)!
+	defer { logger.file.close() }
 	if !logger.options.roll_disabled {
 		if i64(line.len + 1) > logger.options.roll_size { return error('log record exceeds roll_size') }
 		elapsed := time.Duration(time.sys_mono_now() - logger.opened)

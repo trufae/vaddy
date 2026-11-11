@@ -4,7 +4,6 @@ import os
 import time
 import strconv
 import net.urllib
-import net.http.mime
 import encoding.html
 import json2
 
@@ -287,7 +286,7 @@ fn (mut s Server) serve_file(mut c Connection, site Site, route Route, request_f
 	}
 	code := if ranges.len > 0 { 206 } else { 200 }
 	if ranges.len == 0 { ranges = [FileRange{0, stat.size}] }
-	mut content_type := mime.get_mime_type(os.file_ext(path).trim_left('.').to_lower())
+	mut content_type := file_mime_type(os.file_ext(path).trim_left('.').to_lower())
 	// Like Caddy, do not sniff extensionless or unknown files into executable HTML.
 	if os.file_ext(path).to_lower() in ['.js', '.mjs'] { content_type = 'text/javascript' }
 	if content_type.starts_with('text/') && !content_type.contains(';') { content_type += '; charset=utf-8' }

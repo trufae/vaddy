@@ -2,6 +2,23 @@ module main
 
 import os
 
+fn test_file_mime_types() {
+	assert file_mime_type('html') == 'text/html'
+	assert file_mime_type('css') == 'text/css'
+	assert file_mime_type('json') == 'application/json'
+	assert file_mime_type('svg') == 'image/svg+xml'
+	assert file_mime_type('wasm') == 'application/wasm'
+	assert file_mime_type('docx') == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+	for extension in ['', 'HTML', 'unknown-extension', ' html', 'html\x00txt'] {
+		assert file_mime_type(extension) == ''
+	}
+	// Check ordering and lookup at every boundary of the generated table.
+	for i, entry in mime_extensions {
+		if i > 0 { assert mime_extensions[i - 1].extension < entry.extension }
+		assert file_mime_type(entry.extension) == entry.media_type
+	}
+}
+
 fn test_file_paths_ranges_and_conditions() {
 	assert file_path('/public', '/a/../../hello.txt') or { panic(err) } == os.abs_path('/public/hello.txt')
 	assert file_path('/public', '/%2e%2e/hello.txt') or { panic(err) } == os.abs_path('/public/hello.txt')

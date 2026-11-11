@@ -1,5 +1,33 @@
 module main
 
+fn test_output_transfer_preserves_pending_bytes_and_independent_storage() {
+	mut source := Buffer{}
+	mut target := Buffer{}
+	source.write_string('prefix-first')
+	source.skip(7)
+	source.transfer_to(mut target)
+	assert source.len() == 0
+	assert target.bytes().bytestr() == 'first'
+	source.write_string('-second')
+	assert target.bytes().bytestr() == 'first'
+	source.transfer_to(mut target)
+	assert target.bytes().bytestr() == 'first-second'
+	target.skip(target.len())
+	source.write_string('third')
+	source.transfer_to(mut target)
+	source.write_string('fourth')
+	assert target.bytes().bytestr() == 'third'
+	assert source.bytes().bytestr() == 'fourth'
+	target.clear()
+	target.write_string('x'.repeat(buffer_limit - 2))
+	source.transfer_to(mut target)
+	assert target.len() == buffer_limit
+	assert target.bytes().bytestr().ends_with('fo')
+	assert source.bytes().bytestr() == 'urth'
+	source.transfer_to(mut target)
+	assert source.bytes().bytestr() == 'urth'
+}
+
 fn parse_message(raw string, request bool, head bool) !Message {
 	return parse_message_reuse(raw, request, head, []Field{})
 }

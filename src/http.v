@@ -384,3 +384,19 @@ fn (mut b Buffer) skip(n int) {
 	b.pos += n
 	if b.pos == b.data.len { b.clear() }
 }
+
+// These queues have exclusive ownership. When the destination is drained,
+// exchange their storage instead of copying response bytes; a pending write
+// keeps its existing queue and receives only as much extra data as fits.
+fn (mut b Buffer) transfer_to(mut target Buffer) {
+	if b.len() == 0 { return }
+	if target.len() == 0 {
+		b, target = target, b
+		return
+	}
+	n := if b.len() < target.room() { b.len() } else { target.room() }
+	if n > 0 {
+		target.add(b.bytes()[..n])
+		b.skip(n)
+	}
+}

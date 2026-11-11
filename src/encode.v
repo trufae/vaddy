@@ -127,9 +127,7 @@ fn (c &Connection) has_output_work() bool {
 
 fn (mut c Connection) prepare_output() ! {
 	if !c.output.config.enabled || c.tunnel {
-		n := if c.to_client.len() < c.wire_output.room() { c.to_client.len() } else { c.wire_output.room() }
-		c.wire_output.add(c.to_client.bytes()[..n])
-		c.to_client.skip(n)
+		c.to_client.transfer_to(mut c.wire_output)
 		c.output.done = c.have_response && c.response.frame.done && c.to_client.len() == 0
 		return
 	}
@@ -188,8 +186,7 @@ fn (mut c Connection) prepare_output() ! {
 		if c.output.codec != unsafe { nil } { c.log_size = 0 }
 	}
 	if c.output.codec == unsafe { nil } {
-		n := if c.to_client.len() < c.wire_output.room() { c.to_client.len() } else { c.wire_output.room() }
-		c.wire_output.add(c.to_client.bytes()[..n]); c.to_client.skip(n)
+		c.to_client.transfer_to(mut c.wire_output)
 		c.output.done = c.response.frame.done && c.to_client.len() == 0
 		return
 	}

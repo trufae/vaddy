@@ -183,7 +183,7 @@ fn (mut c Connection) prepare_output() ! {
 		header.response_header(m, [], c.close_after)
 		if c.wire_output.room() < header.len() { c.close_encoder(); return }
 		c.wire_output.add(header.bytes())
-		c.log_response_fields = m.fields.filter(!hop_header(it.lower, m.connection))
+		if c.access_targets.len > 0 { c.log_response_fields = m.fields.filter(!hop_header(it.lower, m.connection)) }
 		c.output.decided = true
 		if c.output.codec != unsafe { nil } { c.log_size = 0 }
 	}

@@ -207,7 +207,7 @@ fn (mut s Server) respond_options(mut c Connection, code int, reason string, bod
 		header.write_string('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
 	}
 	c.log_empty_content_type = keepalive && content_type == ''
-	c.log_response_fields = buffer_header_fields(header).filter(it.lower !in ['content-length', 'connection'])
+	if c.access_targets.len > 0 { c.log_response_fields = buffer_header_fields(header).filter(it.lower !in ['content-length', 'connection']) }
 	c.log_size = response_body.len
 	c.to_client.add(header.bytes())
 	if c.request.method != 'HEAD' { c.to_client.add(response_body.bytes()) }
@@ -386,14 +386,21 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	fallback_host := route.upstream.trim_string_left('https://')
 	host := if route.upstream.starts_with('https://') || upstream_request.host == '' { fallback_host } else { upstream_request.host }
 	upstream_request.fields << Field{'Host', 'host', host}
-	c.to_backend.request_header(upstream_request, rewrite_uri(m.uri, route.rewrite), c.ip, c.tls != unsafe { nil }, '')
-	edit_header_buffer(mut c.to_backend, edits.filter(it.proxy), c.header_values)!
-	// Host is represented separately by Go's request type: an append replaces it.
-	mut wire_fields := buffer_header_fields(c.to_backend)
-	wire_hosts := wire_fields.filter(it.lower == 'host')
-	wire_fields = wire_fields.filter(it.lower != 'host')
-	wire_fields << Field{'Host', 'host', if wire_hosts.len > 0 && wire_hosts.last().value != '' { wire_hosts.last().value } else { fallback_host }}
-	write_header_fields(mut c.to_backend, wire_fields)!
+	field_count := c.to_backend.request_header(upstream_request, rewrite_uri(m.uri, route.rewrite), c.ip, c.tls != unsafe { nil }, '')
+	if edits.any(it.proxy) {
+		edit_header_buffer(mut c.to_backend, edits.filter(it.proxy), c.header_values)!
+		// Host is represented separately by Go's request type: an append replaces it.
+		mut wire_fields := buffer_header_fields(c.to_backend)
+		wire_hosts := wire_fields.filter(it.lower == 'host')
+		wire_fields = wire_fields.filter(it.lower != 'host')
+		wire_fields << Field{'Host', 'host', if wire_hosts.len > 0 && wire_hosts.last().value != '' { wire_hosts.last().value } else { fallback_host }}
+		write_header_fields(mut c.to_backend, wire_fields)!
+	} else {
+		// Host is already normalized above. Preserve the same limits without a
+		// parse/filter/serialize round trip when there are no proxy header edits.
+		if field_count > 128 { return error('too many output headers') }
+		if c.to_backend.len() > header_limit { return error('edited headers too large') }
+	}
 
 	c.close_after = m.close || s.draining || c.requests >= s.opts.max_keepalive_requests - 1
 	if m.expect && !m.frame.done { c.to_client.add('HTTP/1.1 100 Continue\r\n\r\n'.bytes()) }
@@ -422,7 +429,7 @@ fn (mut s Server) write_response_header(mut c Connection, m Message, close bool)
 	mut header := Buffer{}
 	header.response_header(m, [], close)
 	response_header_buffer(mut header, c.response_headers, c.header_values, m.status, false)!
-	if m.status >= 200 || m.status == 101 { c.log_response_fields = buffer_header_fields(header).filter(it.lower !in ['connection', 'transfer-encoding']) }
+	if c.access_targets.len > 0 && (m.status >= 200 || m.status == 101) { c.log_response_fields = buffer_header_fields(header).filter(it.lower !in ['connection', 'transfer-encoding']) }
 	if c.to_client.room() < header.len() { return error('response header output exceeds buffer') }
 	c.to_client.add(header.bytes())
 }

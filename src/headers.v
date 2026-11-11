@@ -244,10 +244,18 @@ fn expand_placeholders(value string, values HeaderValues) !string {
 
 fn buffer_header_fields(buffer Buffer) []Field {
 	mut fields := []Field{}
-	for line in buffer.bytes().bytestr().split('\r\n')[1..] {
-		if line == '' { break }
-		name := line.all_before(':')
-		fields << Field{name, name.to_lower(), line.all_after(':').trim_left(' \t')}
+	raw := buffer.bytes().bytestr()
+	mut start := (raw.index('\r\n') or { return fields }) + 2
+	for start < raw.len {
+		end := raw.index_after('\r\n', start) or { break }
+		if end == start { break }
+		colon := raw.index_after(':', start) or { break }
+		if colon >= end { break }
+		mut value := colon + 1
+		for value < end && raw[value] in [u8(` `), `\t`] { value++ }
+		name := raw[start..colon]
+		fields << Field{name, name.to_lower_ascii(), raw[value..end]}
+		start = end + 2
 	}
 	return fields
 }

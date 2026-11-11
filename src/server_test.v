@@ -297,6 +297,38 @@ fn test_benchmark_socketpair_proxy() ! {
 	println('socket-pair proxy: ${count} requests, ${elapsed} ms, ${i64(count) * 1000 / elapsed} requests/s; CPU ${f64(cpu) / 1000000:.3f}s (${f64(cpu) / f64(count):.2f} us/request, ${f64(cpu) / f64(elapsed) / 10:.1f}% of one core); peak RSS ${C.vaddy_test_peak_rss() / 1024} KiB (test process, includes client, backend, TLS/certificate tests)')
 }
 
+fn test_unedited_proxy_headers_keep_output_limits_and_fallback_host() ! {
+	for extra in [124, 125] {
+		mut h := harness()!
+		send_text(h.client, 'GET / HTTP/1.1\r\nHost: localhost\r\n' + 'X-Test: v\r\n'.repeat(extra) + '\r\n')
+		h.pump()!
+		upstream := receive(h.upstream)
+		if extra == 124 {
+			assert parse_message_reuse(upstream, true, false, [])!.fields.len == 128
+		} else {
+			assert upstream == ''
+			assert receive(h.client).starts_with('HTTP/1.1 400')
+		}
+		h.close()
+	}
+	mut large := harness()!
+	defer { large.close() }
+	raw := 'GET / HTTP/1.1\r\nHost: localhost\r\nX-Large: ' + 'x'.repeat(header_limit - 80) + '\r\n\r\n'
+	for start := 0; start < raw.len; start += 4096 {
+		end := if start + 4096 < raw.len { start + 4096 } else { raw.len }
+		send_text(large.client, raw[start..end])
+		large.pump()!
+	}
+	assert receive(large.upstream) == ''
+	assert receive(large.client).starts_with('HTTP/1.1 400')
+	mut hop := harness()!
+	defer { hop.close() }
+	hop.s.cfg = parse_config('http://localhost {\n request_header -Host\n reverse_proxy localhost:8001\n}')!
+	send_text(hop.client, 'GET / HTTP/1.1\r\nHost: localhost\r\n\r\n')
+	hop.pump()!
+	assert receive(hop.upstream).contains('\r\nHost: localhost:8001\r\n')
+}
+
 fn test_workers_distribute_connections_and_share_admission_limit() ! {
 	cfg := parse_config('http://localhost {\n reverse_proxy localhost:8001\n}')!
 	mut s := Server{ cfg: cfg, opts: Options{ workers: 2, max_connections: 4 }, queue: C.vaddy_queue() }

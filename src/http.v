@@ -292,7 +292,10 @@ fn hop_header(name string, connection []string) bool {
 		'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade'] || name in connection
 }
 
-fn (mut b Buffer) request_header(m Message, uri string, ip string, tls bool, host string) {
+// Return the serialized field count so callers can enforce output limits
+// without parsing their own freshly written headers again.
+fn (mut b Buffer) request_header(m Message, uri string, ip string, tls bool, host string) int {
+	mut count := 3 // X-Forwarded-For, X-Forwarded-Host, X-Forwarded-Proto
 	b.write_string(m.method)
 	b.write_string(' ')
 	b.write_string(uri)
@@ -307,9 +310,10 @@ fn (mut b Buffer) request_header(m Message, uri string, ip string, tls bool, hos
 		b.write_string(': ')
 		b.write_string(if key == 'host' && host != '' { host } else { field.value })
 		b.write_string('\r\n')
+		count++
 	}
-	if m.frame.kind == .chunked { b.write_string('Transfer-Encoding: chunked\r\n') }
-	if m.upgrade { b.write_string('Connection: Upgrade\r\nUpgrade: websocket\r\n') }
+	if m.frame.kind == .chunked { b.write_string('Transfer-Encoding: chunked\r\n'); count++ }
+	if m.upgrade { b.write_string('Connection: Upgrade\r\nUpgrade: websocket\r\n'); count += 2 }
 	proto := if tls { 'https' } else { 'http' }
 	b.write_string('X-Forwarded-For: ')
 	b.write_string(ip)
@@ -318,6 +322,7 @@ fn (mut b Buffer) request_header(m Message, uri string, ip string, tls bool, hos
 	b.write_string('\r\nX-Forwarded-Proto: ')
 	b.write_string(proto)
 	b.write_string('\r\n\r\n')
+	return count
 }
 
 fn (mut b Buffer) response_header(m Message, remove []string, close bool) {

@@ -7,7 +7,7 @@ The checked-in hostname, `example.org`, is a placeholder for a domain you contro
 ## Build and run
 
 Dependencies: a recent V compiler with `json2`, C and C++17 compilers, `pkg-config`,
-OpenSSL 3, RE2, zlib and nghttp2 development libraries, and the `openssl` executable. Tested with
+OpenSSL 3, RE2, zlib, nghttp2 and Zstandard development libraries, and the `openssl` executable. Tested with
 V `0.5.2 b7b4dd4` on arm64 macOS. The event backend uses epoll on Linux, kqueue
 on macOS/BSD, and Winsock polling on Windows. See [platform builds and CI](BUILDING.md)
 for the pinned compiler, Windows setup, Alpine output, and validation coverage.
@@ -337,3 +337,25 @@ new startup options to `reload` expecting them to change the running process.
 
 Reload requests are checked once per second. The command waits up to 30 seconds;
 a timeout means the outcome is unknown, so inspect server logs before retrying.
+
+## HTTP/2 and compression
+
+HTTPS listeners negotiate HTTP/2 automatically via ALPN while retaining HTTP/1.1
+support. Backends still use HTTP/1.1. Enable streaming response compression with:
+
+```caddyfile
+example.org {
+    encode zstd gzip
+    reverse_proxy localhost:8001
+}
+```
+
+`encode` alone enables Zstandard and gzip in that preference order. Client quality
+weights take precedence. It defaults to compressible content types and bodies
+larger than 512 bytes; SSE flushes incrementally. Existing Content-Encoding,
+response Cache-Control: no-transform, and partial responses are respected.
+
+Inside an `encode` block, use `minimum_length` (0..16384, with 0 selecting the
+default), `gzip [level]`, `zstd [fastest|default|better|best]`, or a `match` block
+with response `status`/`header` conditions. Formats can be selected on the first
+line or in the block. A path or named path matcher can follow `encode`.

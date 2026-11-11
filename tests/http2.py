@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Independent hyper-h2 wire tests; also run against the supplied Caddy binary."""
 import contextlib
+import gzip
 import hashlib
 import http.client
 import http.server
@@ -21,6 +22,8 @@ import h2.events
 import h2.settings
 
 from integration import free_port
+
+RANDOM = os.urandom(256 * 1024)
 
 
 class Backend(http.server.BaseHTTPRequestHandler):
@@ -48,7 +51,10 @@ class Backend(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b'3\r\none\r\n3\r\ntwo\r\n0\r\n\r\n')
             return
         body = b'x' * (1024 * 1024) if self.path == '/large' else self.path.encode()
+        if self.path == '/random':
+            body = RANDOM
         self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Set-Cookie', 'a=1')
         self.send_header('Set-Cookie', 'b=2')
@@ -95,9 +101,10 @@ class Client:
     def flush(self):
         self.sock.sendall(self.h2.data_to_send())
 
-    def request(self, path, method='GET', length=None, upload=False):
+    def request(self, path, method='GET', length=None, upload=False, headers=()):
         sid = self.h2.get_next_available_stream_id()
         fields = [(':method', method), (':scheme', 'https'), (':authority', 'localhost'), (':path', path)]
+        fields.extend(headers)
         if length is not None:
             fields.append(('content-length', str(length)))
         self.h2.send_headers(sid, fields, end_stream=not upload)
@@ -161,6 +168,7 @@ def server(binary, engine, backend):
  https_port {port}
 }}
 localhost {{
+ encode zstd gzip
  header X-Generation old
  tls "{root / 'cert.pem'}" "{root / 'key.pem'}"
  log {{
@@ -216,6 +224,11 @@ def run(binary, engine):
                 Backend.release.set()
                 assert client.result(slow) == b'/held'
                 assert client.result(client.request('/large')) == b'x' * (1024 * 1024)
+                compressed = client.request('/large', headers=[('accept-encoding', 'gzip')])
+                assert gzip.decompress(client.result(compressed)) == b'x' * (1024 * 1024)
+                assert dict(client.headers[compressed])['content-encoding'] == 'gzip'
+                compressed = client.request('/random', headers=[('accept-encoding', 'gzip')])
+                assert gzip.decompress(client.result(compressed)) == RANDOM
                 assert client.result(client.request('/chunked')) == b'onetwo'
                 assert client.result(client.request('/head', 'HEAD')) == b''
                 sid = client.request('/cookies')

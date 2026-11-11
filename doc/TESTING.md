@@ -137,3 +137,15 @@ uploads/downloads, chunked bodies, duplicate cookies, HEAD, cancelled requests,
 early redirects and HTTP/2 log accounting. Vaddy-specific checks exercise reload
 snapshots on a live connection and graceful GOAWAY with an active response
 (the latter is skipped on Windows, where terminate is a forced stop).
+
+## Compression comparisons
+
+```sh
+make encode
+make encode ENCODE_REFERENCE=./caddy-bench
+```
+
+Tests decode gzip and Zstandard independently (Python gzip and the libzstd
+decoder), compare representations/cache headers, and cover negotiation, size
+thresholds, request/response matching, incompressible data, HEAD, chunked bodies
+and incremental SSE. The HTTP/2 suite also transfers compressed responses.

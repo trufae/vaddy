@@ -15,6 +15,7 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | Proxy | One HTTP/HTTPS upstream per route, verified TLS, preserved HTTP Host (HTTPS uses the upstream Host), regenerated X-Forwarded-For/Host/Proto, hop-by-hop header removal |
 | HTTP | HTTP/2 over TLS with ALPN, concurrent streams and flow control; HTTP/1.1, HTTP/1.0 clients with connection close, keep-alive, sequential pipelining, HEAD, informational responses, length/chunked bodies, EOF-delimited responses |
 | Streaming | Bounded upload/download queues, backpressure, SSE, WebSocket upgrades |
+| Compression | `encode [path/@matcher] [zstd gzip]`, levels, `minimum_length`, status/header response matching, negotiation, cache headers and incremental streaming over HTTP/1 and HTTP/2 |
 | TLS | OpenSSL TLS 1.2+, automatic public/internal certificates, live context replacement |
 | Access logs | Named JSON/console logs, filters, custom fields, levels and path-based skipping; stderr/stdout/discard/files; file rotation, gzip and retention; Caddy-style metadata/body counts |
 | Reload | Transactional request-setting reloads through `vaddy reload` or POSIX SIGHUP; active requests keep their configuration; ports and certificate policies require restart |
@@ -150,8 +151,11 @@ tracking them here does not imply that removing those restrictions is desirable.
 
 - [ ] **CADDY-033 — Static files:** implement file serving, directory browsing,
   range requests and cache validation.
-- [ ] **CADDY-034 — Compression:** implement response encoding/compression,
-  including gzip and Zstandard.
+- [x] **CADDY-034 — Compression:** streaming gzip and Zstandard for responses,
+  with bounded queues and flow control. Negotiation, size thresholds,
+  content types, HEAD, 206/304, existing encodings, no-transform, ETag variants and
+  incremental SSE are compared with the pinned Caddy reference in `make encode`.
+  Remaining tuning and edge cases are tracked in CADDY-058.
 - [ ] **CADDY-035 — Templates:** implement response template rendering.
 - [ ] **CADDY-036 — PHP and FastCGI:** implement FastCGI transport and
   `php_fastcgi` routing behavior.
@@ -192,6 +196,13 @@ tracking them here does not imply that removing those restrictions is desirable.
   separate, expanding scope rather than a finite built-in feature list.
 
 ### Compatibility verification
+
+- [ ] **CADDY-058 — Remaining compression options:** exact codec output/level
+  mapping (Vaddy uses zlib/libzstd), stateless gzip level, nested Zstandard options,
+  complete content sniffing when upstream omits Content-Type, and Caddy's precise
+  first-write threshold behavior. Vaddy accepts minimum_length up to 16384 bytes
+  and buffers small unknown-length bodies up to that threshold. Compressed HTTP/1
+  responses use chunked framing; Caddy may choose Content-Length for short output.
 
 - [ ] **CADDY-057 — Additional HTTP/2 options:** cleartext HTTP/2 listeners (h2c),
   extended CONNECT/WebSockets over HTTP/2, forwarding/editing HTTP/2 trailers,

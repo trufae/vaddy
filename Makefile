@@ -19,7 +19,7 @@ ifneq ($(OPENSSL_PKGCONFIG),)
 export PKG_CONFIG_PATH := $(OPENSSL_PKGCONFIG):$(PKG_CONFIG_PATH)
 endif
 
-.PHONY: all test integration http2 compatibility bench bench-workers caddy-bench raddy-bench compare alpine alpine-x86_64 fmt clean install
+.PHONY: all test integration http2 encode compatibility bench bench-workers caddy-bench raddy-bench compare alpine alpine-x86_64 fmt clean install
 all: $(TARGET)
 
 .build/regex.o: src/regex.cc src/regex.h
@@ -39,6 +39,9 @@ integration: $(TARGET)
 
 http2: $(TARGET)
 	$(PYTHON) tests/http2.py ./$(TARGET) $(HTTP2_REFERENCE)
+
+encode: $(TARGET)
+	$(PYTHON) tests/encode.py ./$(TARGET) $(ENCODE_REFERENCE)
 
 # Caddy is supplied explicitly so comparisons record the actual reference version.
 compatibility: $(TARGET)

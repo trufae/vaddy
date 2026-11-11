@@ -15,6 +15,7 @@ struct Token {
 
 struct Route {
 mut:
+	encode EncodeConfig
 	log_rules []LogRule
 	patterns []string
 	matcher  string
@@ -33,6 +34,7 @@ mut:
 
 struct Site {
 mut:
+	encode EncodeConfig
 	logs []LogConfig
 	log_rules []LogRule
 	hosts          []string
@@ -219,10 +221,14 @@ fn parse_route(d Directive) !Route {
 		}
 	}
 	for child in d.children {
-		if child.args.len == 0 || (child.children.len > 0 && child.args[0] !in ['reverse_proxy', 'header', 'request_header']) {
+		if child.args.len == 0 || (child.children.len > 0 && child.args[0] !in ['reverse_proxy', 'header', 'request_header', 'encode']) {
 			return error('line ${child.line}: unsupported nested directive')
 		}
 		match child.args[0] {
+			'encode' {
+				if route.encode.enabled { return error('duplicate encode directive') }
+				route.encode = parse_encode(child)!
+			}
 			'log_skip', 'skip_log', 'log_level', 'log_name', 'log_append' { route.log_rules << parse_log_rule(child)! }
 			'header' { route.response_headers << parse_headers(child, false)! }
 			'request_header' { route.request_headers << parse_headers(child, true)! }
@@ -324,6 +330,10 @@ fn parse_config(input string) !Config {
 				continue
 			}
 			match name {
+				'encode' {
+					if site.encode.enabled { return error('duplicate encode directive') }
+					site.encode = parse_encode(child)!
+				}
 				'log' {
 					mut log_config := parse_access_log(child)!
 					custom := child.children.any(it.args.len > 0 && it.args[0] !in ['no_hostname', 'hostnames'])
@@ -362,10 +372,12 @@ fn parse_config(input string) !Config {
 		}
 		if site.routes.len == 0 { return error('site needs reverse_proxy, handle or redir') }
 		resolve_log_rules(mut site.log_rules, site.matchers)!
+		resolve_encode(mut site.encode, site.matchers)!
 		resolve_header_matchers(mut site.response_headers, site.matchers)!
 		resolve_header_matchers(mut site.request_headers, site.matchers)!
 		mut fallbacks := 0
 		for mut route in site.routes {
+			resolve_encode(mut route.encode, site.matchers)!
 			resolve_log_rules(mut route.log_rules, site.matchers)!
 			resolve_header_matchers(mut route.response_headers, site.matchers)!
 			resolve_header_matchers(mut route.request_headers, site.matchers)!

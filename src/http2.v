@@ -61,6 +61,7 @@ fn (mut frame Framing) consume_decoded(data []u8, mut output Buffer) !int {
 fn (mut s Server) close_h2_stream(mut parent Connection, id int) {
 	mut stream := parent.h2_streams[id] or { return }
 	s.log_access(mut stream, stream.h2_output_end)
+	stream.close_encoder()
 	release_runtime(mut stream)
 	s.close_backend(mut stream)
 	if stream.counted {
@@ -117,7 +118,7 @@ fn h2_ingress(mut c Connection) ! {
 fn h2_egress(mut c Connection) ! {
 	if c.h2_state.closed != 0 || c.h2_output_end { return }
 	for !c.h2_headers_sent {
-		raw := c.to_client.bytes().bytestr()
+		raw := c.wire_output.bytes().bytestr()
 		end := raw.index('\r\n\r\n') or { return }
 		message := parse_message_reuse(raw[..end + 4], false, c.request.method == 'HEAD', [])!
 		if message.status == 101 { return error('HTTP/1 upgrade cannot be sent on HTTP/2') }
@@ -127,23 +128,23 @@ fn h2_egress(mut c Connection) ! {
 			fields += '${field.lower}\x00${field.value}\x00'
 		}
 		if C.vaddy_h2_response(c.h2_parent, c.h2_state, fields.str, fields.len, int(message.status < 200)) != 0 { return error('cannot submit HTTP/2 headers') }
-		c.to_client.skip(end + 4)
+		c.wire_output.skip(end + 4)
 		if message.status >= 200 {
 			c.h2_headers_sent = true
 			c.h2_output_frame = message.frame
 		}
 	}
-	if c.to_client.len() > 0 {
+	if c.wire_output.len() > 0 {
 		room := buffer_limit - c.h2_state.output_len
 		if room == 0 { return }
 		// Decode at most one available output window. Input may contain more
 		// chunk framing than payload, so limit the decoder's output explicitly.
 		mut decoded := Buffer{}
-		data := c.to_client.bytes()
+		data := c.wire_output.bytes()
 		limit := if data.len < room { data.len } else { room }
 		n := c.h2_output_frame.consume_decoded(data[..limit], mut decoded)!
 		if C.vaddy_h2_push(c.h2_parent, c.h2_state, decoded.bytes().data, decoded.len()) != 0 { return error('cannot queue HTTP/2 data') }
-		c.to_client.skip(n)
+		c.wire_output.skip(n)
 	}
 }
 
@@ -217,6 +218,9 @@ fn (mut s Server) pump_h2(mut parent Connection, event_fd int) ! {
 fn (mut s Server) update_h2_interests(mut parent Connection) ! {
 	mut flags := parent.read_want
 	if C.vaddy_h2_wants_write(parent.h2) != 0 { flags |= parent.write_want }
+	for _, mut stream in parent.h2_streams {
+		if stream.h2_state.output_len < buffer_limit && stream.has_output_work() { flags |= parent.write_want }
+		s.update_backend_interests(mut stream)!
+	}
 	s.watch(parent.fd, flags)!
-	for _, mut stream in parent.h2_streams { s.update_backend_interests(mut stream)! }
 }

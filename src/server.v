@@ -24,6 +24,8 @@ mut:
 @[heap]
 struct Connection {
 mut:
+	output EncodedOutput
+	wire_output Buffer
 	h2 voidptr
 	h2_streams map[int]&Connection
 	h2_id int
@@ -150,6 +152,7 @@ fn (mut s Server) close_backend(mut c Connection) {
 
 fn (mut s Server) close_client(mut c Connection) {
 	if c.fd < 0 { return }
+	c.close_encoder()
 	if c.h2 != unsafe { nil } {
 		for id in c.h2_streams.keys() { s.close_h2_stream(mut c, id) }
 		C.vaddy_h2_free(c.h2)
@@ -328,6 +331,11 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		s.redirect_response(mut c, route)!
 		return false
 	}
+	encoding := if route.encode.enabled { route.encode } else { site.encode }
+	if encoding.enabled && header_edit_matches(encoding.filter, [], c.header_values, 0) {
+		c.output.config = encoding
+		c.output.name = accepted_encoding(m.fields, encoding.formats)
+	}
 	c.log_upstream = route.upstream
 	c.header_values.upstream_hostport = route.upstream.trim_string_left('https://')
 	generation := if c.runtime == unsafe { nil } { i64(0) } else { c.runtime.id }
@@ -357,6 +365,11 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	edits << route.request_headers
 	mut upstream_request := m
 	upstream_request.fields = m.fields.clone()
+	if c.output.name != '' {
+		for mut field in upstream_request.fields {
+			if field.lower == 'if-none-match' { field = Field{...field, value: field.value.replace('-${c.output.name}"', '"')} }
+		}
+	}
 	apply_header_edits(mut upstream_request.fields, edits.filter(!it.proxy), c.header_values, 0, false)!
 	hosts := upstream_request.fields.filter(it.lower == 'host')
 	upstream_request.host = if hosts.len > 0 { hosts.last().value } else { '' }
@@ -443,7 +456,7 @@ fn (mut s Server) consume_response(mut c Connection) ! {
 		data := c.response_buffer.bytes()
 		limit := if data.len < c.to_client.room() { data.len } else { c.to_client.room() }
 		n := c.response.frame.consume(data[..limit])!
-		if !c.tunnel { c.log_size = c.response.frame.body_bytes }
+		if !c.tunnel && c.output.codec == unsafe { nil } { c.log_size = c.response.frame.body_bytes }
 		c.to_client.add(data[..n])
 		c.response_buffer.skip(n)
 		if c.response.frame.done && c.response_buffer.len() > 0 {
@@ -466,6 +479,7 @@ fn (mut s Server) backend_eof(mut c Connection) ! {
 }
 
 fn (mut s Server) finish_request(mut c Connection) ! {
+	if !c.output.done || c.wire_output.len() > 0 { return }
 	if c.h2_id != 0 {
 		if c.have_response && c.response.frame.done && c.to_client.len() == 0 && c.h2_headers_sent && !c.h2_output_end {
 			C.vaddy_h2_end(c.h2_parent, c.h2_state)
@@ -477,6 +491,8 @@ fn (mut s Server) finish_request(mut c Connection) ! {
 	if c.local && !c.close_after && !c.request.frame.done { return }
 	if !c.have_response || !c.response.frame.done || c.to_client.len() > 0 { return }
 	s.log_access(mut c, true)
+	c.close_encoder()
+	c.output = EncodedOutput{}
 	if c.close_after || s.draining {
 		c.dead = true
 		return
@@ -545,9 +561,12 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 	mut backend_readable := event_fd == c.backend || (c.backend_tls != unsafe { nil } && C.vaddy_tls_has_pending(c.backend_tls) != 0)
 	for _ in 0 .. 8 {
 		mut progress := false
+		before_output := c.to_client.len()
+		c.prepare_output()!
+		if before_output != c.to_client.len() { progress = true }
 		if c.h2_id != 0 { h2_egress(mut c)! }
-		if c.h2_id == 0 && c.to_client.len() > 0 {
-			data := c.to_client.bytes()
+		if c.h2_id == 0 && c.wire_output.len() > 0 {
+			data := c.wire_output.bytes()
 			mut n := 0
 			if c.tls != unsafe { nil } {
 				if c.write_len == 0 { c.write_len = data.len }
@@ -571,7 +590,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 				}
 			}
 			if n > 0 {
-			c.to_client.skip(n)
+			c.wire_output.skip(n)
 				progress = true
 			}
 		}
@@ -680,7 +699,7 @@ fn (mut s Server) update_interests(mut c Connection) ! {
 	if c.handshake {
 		flags = c.handshake_want
 	} else {
-		if c.to_client.len() > 0 { flags |= c.write_want }
+		if c.has_output_work() { flags |= c.write_want }
 		if (!c.local || !c.close_after) && (!c.have_request || (!c.request.frame.done && (!c.have_response || c.tunnel || c.local))) && c.request_buffer.room() >= 16384 && c.to_backend.room() >= 16384 {
 			flags |= c.read_want
 		}

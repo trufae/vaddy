@@ -10,6 +10,10 @@ Copyright 2015 Matthew Holt and The Caddy Authors.
 That template is licensed under the Apache License, Version 2.0. A copy is
 included in [licenses/Caddy-Apache-2.0.txt](licenses/Caddy-Apache-2.0.txt).
 
-Vaddy also links to separately installed OpenSSL, RE2, zlib, nghttp2 and the platform C++
+Vaddy also links to separately installed OpenSSL, RE2, zlib, nghttp2, Zstandard and the platform C++
 runtime. Their packages carry their respective licenses and notices. RE2
 matching is wrapped by Vaddy's own Go-style replacement expansion code.
+
+The default compressible media type list in `src/encode.v` follows Caddy's
+`modules/caddyhttp/encode/encode.go` at the same revision above and carries the
+same Apache 2.0 notice. Encoder and event-loop code is implemented separately.

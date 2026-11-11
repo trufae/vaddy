@@ -53,7 +53,7 @@ fn (mut s Server) dispatch_client(mut c Connection) {
 
 fn (mut s Server) drain_incoming() {
 	mut bytes := [256]u8{}
-	for C.vaddy_recv(s.control_fd, &bytes[0], uint(bytes.len), 0) > 0 {
+	for C.vaddy_recv(s.control_fd, &bytes[0], u64(bytes.len), 0) > 0 {
 	}
 	for {
 		select {

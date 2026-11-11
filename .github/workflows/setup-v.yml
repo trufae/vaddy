@@ -1,6 +1,6 @@
 name: Stock V toolchain
 
-# Builds and tests with an official V release installed by vlang/setup-v,
+# Builds and tests with the official prebuilt V release,
 # alongside the pinned compiler fork used by ci.yml. This checks that Vaddy
 # also works with an unmodified upstream compiler.
 on:
@@ -28,7 +28,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        include:
+          - os: ubuntu-24.04
+            asset: v_linux.zip
+          - os: macos-15
+            asset: v_macos_arm64.zip
     steps:
       - uses: actions/checkout@v7
         with:
@@ -46,20 +50,25 @@ jobs:
           brew install pkgconf openssl@3 re2 nghttp2 zstd
           echo "$(brew --prefix openssl@3)/bin" >> "$GITHUB_PATH"
 
-      # Only `version` is passed: the action installs the release build for the
-      # runner it is executed on, so OS and arch follow the matrix. The pin
-      # mirrors V_VERSION in ci/toolchain.env, which pins the fork build.
-      - name: Set up V
-        id: v
-        uses: vlang/setup-v@v1.7
-        with:
-          version: ${{ inputs.v-version || '0.5.2' }}
-          cache: true
+      # setup-v builds the tag from source against a moving vc bootstrap,
+      # which can no longer compile an older release. Use its published binary.
+      - name: Install stock V release
+        env:
+          V_VERSION: ${{ inputs.v-version }}
+          V_ASSET: ${{ matrix.asset }}
+        run: |
+          . ci/toolchain.env
+          curl --fail --location --retry 3 \
+            --output "$RUNNER_TEMP/v.zip" \
+            "https://github.com/vlang/v/releases/download/${V_VERSION}/${V_ASSET}"
+          mkdir -p .tools/stock-v
+          unzip -q "$RUNNER_TEMP/v.zip" -d .tools/stock-v
+          echo "$PWD/.tools/stock-v/v" >> "$GITHUB_PATH"
 
       - name: Show toolchain
         run: |
           v version
-          echo "V binary: ${{ steps.v.outputs.v-bin-path }}"
+          command -v v
 
       - name: Build and test
         run: |

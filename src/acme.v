@@ -2,7 +2,7 @@ module main
 
 import os
 import time
-import json2
+import x.json2
 import crypto.sha256
 import crypto.rand as crypto_rand
 import encoding.base64
@@ -81,9 +81,11 @@ mut:
 fn openssl_command(exe string, args []string) !string {
 	mut p := os.new_process(exe)
 	p.set_args(args)
-	p.set_redirect_stdio_merged()
+	p.set_redirect_stdio()
 	p.run()
-	output := p.stdout_slurp()
+	// Drain both pipes concurrently so verbose OpenSSL errors cannot block it.
+	stderr_reader := spawn p.stderr_slurp()
+	output := p.stdout_slurp() + stderr_reader.wait()
 	p.wait()
 	code := p.code
 	p.close()
@@ -148,19 +150,18 @@ fn response_ok(resp http.Response) ! {
 fn (mut a AcmeClient) post(url string, payload string, use_jwk bool) !http.Response {
 	for _ in 0 .. 3 {
 		if a.nonce == '' {
-			r := a.transport(.head, a.directory.new_nonce, '')!
+			r := a.transport(http.Method.head, a.directory.new_nonce, '')!
 			response_ok(r)!
 			a.nonce = r.header.get_custom('Replay-Nonce') or { return error('ACME nonce missing') }
 		}
 		identity := if use_jwk {
 			'"jwk":${a.jwk}'
 		} else {
-			'"kid":${json2.encode(a.kid, escape_unicode: true, time_as_unix: true)}'
+			'"kid":${json2.encode(a.kid, escape_unicode: true)}'
 		}
 		protected := base64.url_encode_str('{"alg":"RS256","nonce":${json2.encode(a.nonce,
 			escape_unicode: true
-			time_as_unix:   true
-		)},"url":${json2.encode(url, escape_unicode: true, time_as_unix: true)},${identity}}')
+		)},"url":${json2.encode(url, escape_unicode: true)},${identity}}')
 		encoded := base64.url_encode_str(payload)
 		input := os.join_path(a.account_dir, 'sign.input')
 		output := os.join_path(a.account_dir, 'sign.output')
@@ -169,9 +170,8 @@ fn (mut a AcmeClient) post(url string, payload string, use_jwk bool) !http.Respo
 			os.join_path(a.account_dir, 'account.key'), '-out', output, input])!
 		signature := base64.url_encode(os.read_bytes(output)!)
 		a.nonce = '' // A nonce is never reused, including after a transport failure.
-		resp := a.transport(.post, url, json2.encode(Jws{protected, encoded, signature},
+		resp := a.transport(http.Method.post, url, json2.encode(Jws{protected, encoded, signature},
 			escape_unicode: true
-			time_as_unix:   true
 		))!
 		a.nonce = resp.header.get_custom('Replay-Nonce') or { '' }
 		if resp.status_code == 400 {
@@ -196,7 +196,7 @@ fn new_acme(cfg Config, opts Options, exe string) !AcmeClient {
 	modulus := openssl_command(exe, ['rsa', '-in', key, '-modulus', '-noout'])!
 	n := base64.url_encode(hex.decode(modulus.all_after('Modulus='))!)
 	jwk := '{"e":"AQAB","kty":"RSA","n":"${n}"}'
-	resp := opts.acme_transport(.get, cfg.acme_ca, '')!
+	resp := opts.acme_transport(http.Method.get, cfg.acme_ca, '')!
 	response_ok(resp)!
 	directory := json2.decode[AcmeDirectory](resp.body)!
 	acme_url(directory.new_nonce)!
@@ -207,7 +207,6 @@ fn new_acme(cfg Config, opts Options, exe string) !AcmeClient {
 	contact := if cfg.email == '' { []string{} } else { ['mailto:${cfg.email}'] }
 	account := a.post(directory.new_account, json2.encode(NewAccount{ contact: contact },
 		escape_unicode: true
-		time_as_unix:   true
 	), true)!
 	a.kid = account.header.get_custom('Location') or { return error('ACME account Location missing') }
 	atomic_write(os.join_path(account_dir, 'account.url'), a.kid)!
@@ -265,7 +264,6 @@ fn issue_acme(cfg Config, opts Options, exe string, dir string) ! {
 	ids := cfg.domains().map(Identifier{ value: it })
 	r := a.post(a.directory.new_order, json2.encode(NewOrder{ids},
 		escape_unicode: true
-		time_as_unix:   true
 	), false)!
 	mut order := json2.decode[AcmeOrder](r.body)!
 	order_url := r.header.get_custom('Location') or { return error('ACME order Location missing') }
@@ -286,7 +284,7 @@ fn issue_acme(cfg Config, opts Options, exe string, dir string) ! {
 	}
 	if !ready { return error('ACME order did not become ready') }
 	csr := base64.url_encode(os.read_bytes(os.join_path(dir, 'csr.der'))!)
-	a.post(order.finalize, json2.encode(Finalize{csr}, escape_unicode: true, time_as_unix: true), false)!
+	a.post(order.finalize, json2.encode(Finalize{csr}, escape_unicode: true), false)!
 	for _ in 0 .. 90 {
 		if C.vaddy_stopped() != 0 { return error('shutdown') }
 		resp := a.post(order_url, '', false)!

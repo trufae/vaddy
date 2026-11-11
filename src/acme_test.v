@@ -1,7 +1,7 @@
 module main
 
 import os
-import json2
+import x.json2
 import net.http
 import encoding.base64
 import crypto.sha256

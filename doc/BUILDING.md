@@ -76,39 +76,31 @@ still receive updates; the complete environment is not bit-for-bit pinned.
 ## Stock V release check
 
 [setup-v.yml](../.github/workflows/setup-v.yml) is a second, independent workflow.
-Instead of bootstrapping the fork, it installs an official release with
-[`vlang/setup-v`](https://github.com/vlang/setup-v) and runs the same build,
+Instead of bootstrapping the fork, it downloads an official prebuilt release from
+[`vlang/v`](https://github.com/vlang/v/releases) and runs the same build,
 unit tests, Caddyfile validation, integration test, and HTTP/2, encoding and
 file suites. It runs on Ubuntu 24.04 and macOS 15. It checks whether Vaddy builds
 and passes its tests without the fork's patches.
 
-```yaml
-- uses: vlang/setup-v@v1.7
-  with:
-    version: 0.5.2   # tag, branch or SHA from the V repository
-    cache: true
-```
-
-Only `version` is passed: the action installs whatever OS and architecture the
-runner is. Choose the OS in `runs-on`/`matrix.os`, and pass `architecture`
-(e.g. `x86_64`, `arm64`, `aarch64`, `riscv64`) only when it must differ from the
-runner. Other inputs: `version-file` (e.g. `.v-version`), `stable: true` for the
-latest release, `check-latest: true`, `path`, `clean`; outputs are `v-bin-path`,
-`bin-path`, `version` and `architecture`.
-
-The release is pinned in the workflow and mirrored by `V_VERSION` in
+The matrix selects `v_linux.zip` for Ubuntu x86-64 and `v_macos_arm64.zip` for
+macOS arm64. The release is pinned by `V_VERSION` in
 [ci/toolchain.env](../ci/toolchain.env). Override it for a manual run with the
-`v-version` dispatch input. Pinning matters: installing the default branch
-builds the compiler from source and can fail on a stale prebuilt `vc`
-(`unknown function: ...`).
+`v-version` dispatch input, using a release tag with those assets. Branches and
+commit IDs are not supported. The workflow installs under `.tools/stock-v`
+and adds the extracted compiler directory to `PATH`.
+
+`vlang/setup-v@v1.7` downloads source even when given a release tag, then builds
+it using the current `vc` bootstrap. That bootstrap can be incompatible with
+older V sources. Downloading the release binaries avoids that moving dependency.
 
 To try that release locally into a separate directory:
 
 ```sh
-curl -L -o /tmp/v.zip https://github.com/vlang/v/releases/download/0.5.2/v_macos_arm64.zip
-unzip -q /tmp/v.zip -d .tools && mv .tools/v .tools/v-0.5.2
-make V="$PWD/.tools/v-0.5.2/v"
-make test V="$PWD/.tools/v-0.5.2/v"
+curl -fL -o /tmp/v.zip https://github.com/vlang/v/releases/download/0.5.2/v_macos_arm64.zip
+mkdir -p .tools/stock-v
+unzip -q /tmp/v.zip -d .tools/stock-v
+make -B V="$PWD/.tools/stock-v/v/v"
+make test V="$PWD/.tools/stock-v/v/v"
 ```
 
 To build the pinned fork's compiler locally into a new directory:

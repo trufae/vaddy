@@ -94,8 +94,8 @@ make alpine        # Build/test Alpine x86-64; export dist/vaddy-alpine-x86_64
 ```
 
 GitHub Actions builds and tests Linux, macOS and native Windows, plus the Alpine
-target. A separate workflow also runs on an official V release installed with
-`vlang/setup-v`, so the fork is not required. See [build instructions](doc/BUILDING.md) for toolchains and dependencies.
+target. A separate workflow also checks compatibility with the official V release
+binaries. See [build instructions](doc/BUILDING.md) for toolchains and dependencies.
 
 The server runs natively in V with small OS/OpenSSL adapters. Go is used only
 by the comparison tools and the Caddy reference build; Rust/Cargo builds the

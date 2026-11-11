@@ -1,7 +1,7 @@
 module main
 
 import os
-import json2
+import x.json2
 import time
 
 #include "@VMODROOT/tests/support.h"
@@ -46,14 +46,14 @@ fn harness() !Harness {
 }
 
 fn send_text(fd int, data string) {
-	assert C.vaddy_send(fd, data.str, uint(data.len), 0) == data.len
+	assert C.vaddy_send(fd, data.str, u64(data.len), 0) == data.len
 }
 
 fn receive(fd int) string {
 	mut data := []u8{}
 	mut buf := [65536]u8{}
 	for {
-		n := C.vaddy_recv(fd, &buf[0], uint(buf.len), 0)
+		n := C.vaddy_recv(fd, &buf[0], u64(buf.len), 0)
 		if n <= 0 { break }
 		data << buf[..n]
 	}
@@ -204,33 +204,45 @@ fn test_internal_tls_issuance_handshake_and_reload() ! {
 	n := C.vaddy_tls_read(client_tls, &buffer[0], buffer.len)
 	assert n > 0
 	assert buffer[..n].bytestr().ends_with('\r\n\r\nok')
-	// Fill the TLS socket and application queues before allowing the client to read.
+	// Stop at an actual blocked TLS write: Windows loopback TCP can buffer more
+	// than a Unix socketpair, even with the same SO_SNDBUF/SO_RCVBUF settings.
 	// This exercises SSL_ERROR_WANT_WRITE retries while subsequent upstream data arrives.
 	assert C.vaddy_tls_write(client_tls, request.str, request.len) == request.len
 	h.pump()!
 	assert receive(h.upstream).contains('/secure')
-	send_text(h.upstream, 'HTTP/1.1 200 OK\r\nContent-Length: 262144\r\n\r\n')
+	body_len := 1024 * 1024
+	header := 'HTTP/1.1 200 OK\r\nContent-Length: ${body_len}\r\n\r\n'
+	send_text(h.upstream, header)
 	chunk := 'z'.repeat(4096)
 	mut sent := 0
-	for _ in 0 .. 100 {
-		amount := C.vaddy_send(h.upstream, chunk.str, uint(chunk.len), 0)
+	deadline := mono_ms() + 5000
+	for sent < body_len && mono_ms() < deadline {
+		amount := C.vaddy_send(h.upstream, chunk.str, u64(if body_len - sent < chunk.len {
+			body_len - sent
+		} else {
+			chunk.len
+		}), 0)
 		if amount > 0 { sent += amount }
+		if amount < 0 { assert C.vaddy_again() != 0 }
 		h.pump()!
-		if amount < 0 { break }
+		if h.c.write_len > 0 { break }
 	}
-	assert sent < 262144
+	assert sent < body_len
 	assert h.c.to_client.len() <= buffer_limit
 	assert h.c.response_buffer.len() <= buffer_limit
+	assert h.c.wire_output.len() <= buffer_limit
 	assert h.c.write_len > 0
+	assert h.c.write_want == 2
 	mut received := []u8{}
 	for _ in 0 .. 10000 {
-		if sent < 262144 {
-			amount := C.vaddy_send(h.upstream, chunk.str, uint(if 262144 - sent < chunk.len {
-				262144 - sent
+		if sent < body_len {
+			amount := C.vaddy_send(h.upstream, chunk.str, u64(if body_len - sent < chunk.len {
+				body_len - sent
 			} else {
 				chunk.len
 			}), 0)
 			if amount > 0 { sent += amount }
+			if amount < 0 { assert C.vaddy_again() != 0 }
 		}
 		h.pump()!
 		r := C.vaddy_tls_read(client_tls, &buffer[0], buffer.len)
@@ -239,10 +251,10 @@ fn test_internal_tls_issuance_handshake_and_reload() ! {
 		} else {
 			assert C.vaddy_tls_error(client_tls, r) in [2, 3]
 		}
-		if received.len >= 262144 + 43 { break }
+		if received.len >= body_len + header.len { break }
 	}
-	assert sent == 262144
-	assert received.bytestr().all_after('\r\n\r\n') == 'z'.repeat(262144)
+	assert sent == body_len
+	assert received.bytestr() == header + 'z'.repeat(body_len)
 	assert !h.c.dead
 }
 
@@ -287,10 +299,10 @@ fn test_benchmark_socketpair_proxy() ! {
 		h.c.requests = 0
 		send_text(h.client, request)
 		h.s.pump(mut h.c, h.c.fd)!
-		assert C.vaddy_recv(h.upstream, &buf[0], uint(buf.len), 0) > 0
+		assert C.vaddy_recv(h.upstream, &buf[0], u64(buf.len), 0) > 0
 		send_text(h.upstream, response)
 		h.s.pump(mut h.c, h.c.backend)!
-		assert C.vaddy_recv(h.client, &buf[0], uint(buf.len), 0) == response.len
+		assert C.vaddy_recv(h.client, &buf[0], u64(buf.len), 0) == response.len
 	}
 	elapsed := mono_ms() - start
 	cpu := C.vaddy_test_cpu_us() - cpu_start
@@ -495,7 +507,7 @@ fn test_access_logs_once_per_request_and_aborted_response() ! {
 	mut redirect := harness()!
 	defer { redirect.close() }
 	redirect.s.cfg = h.s.cfg
-	redirect.s.access_logs = h.s.access_logs
+	redirect.s.access_logs = h.s.access_logs.clone()
 	send_text(redirect.client, 'GET /old HTTP/1.1\r\nHost: localhost\r\n\r\n')
 	redirect.pump()!
 	assert json2.decode[AccessRecord](os.read_lines(path)!.last())!.status == 308

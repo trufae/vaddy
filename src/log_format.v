@@ -1,6 +1,6 @@
 module main
 
-import json2
+import x.json2
 import crypto.sha256
 import net.urllib
 import time

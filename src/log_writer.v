@@ -46,9 +46,47 @@ fn log_duration(value string) !time.Duration {
 		if days < 0 || days > 100000 { return error('invalid duration') }
 		return time.Duration(days * f64(24 * time.hour))
 	}
-	duration := time.parse_duration(value)!
-	if duration < 0 { return error('negative duration') }
-	return duration
+	// Stock V 0.5.2 has no time.parse_duration. Accept compound decimal units
+	// without converting the integral nanoseconds through a floating point value.
+	text := if value.starts_with('+') || value.starts_with('-') { value[1..] } else { value }
+	if text == '0' { return time.Duration(0) }
+	if text == '' { return error('invalid duration') }
+	mut pos := 0
+	mut total := i64(0)
+	for pos < text.len {
+		start := pos
+		for pos < text.len && text[pos].is_digit() { pos++ }
+		whole := if pos == start { u64(0) } else { strconv.parse_uint(text[start..pos], 10, 64)! }
+		mut digits := pos - start
+		mut fraction := f64(0)
+		if pos < text.len && text[pos] == `.` {
+			pos++
+			fraction_start := pos
+			for pos < text.len && text[pos].is_digit() { pos++ }
+			digits += pos - fraction_start
+			if pos > fraction_start { fraction = strconv.atof64('0.' + text[fraction_start..pos])! }
+		}
+		if digits == 0 { return error('invalid duration') }
+		unit_start := pos
+		for pos < text.len && !text[pos].is_digit() && text[pos] != `.` { pos++ }
+		unit := match text[unit_start..pos] {
+			'ns' { i64(time.nanosecond) }
+			'us', 'µs', 'μs' { i64(time.microsecond) }
+			'ms' { i64(time.millisecond) }
+			's' { i64(time.second) }
+			'm' { i64(time.minute) }
+			'h' { i64(time.hour) }
+			else { return error('invalid duration unit') }
+		}
+		remaining := max_i64 - total
+		if whole > u64(remaining / unit) { return error('duration out of range') }
+		part := i64(whole) * unit
+		fraction_ns := i64(fraction * f64(unit))
+		if fraction_ns > remaining - part { return error('duration out of range') }
+		total += part + fraction_ns
+	}
+	if value.starts_with('-') && total > 0 { return error('negative duration') }
+	return time.Duration(total)
 }
 
 fn log_mode(value string) !int {

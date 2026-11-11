@@ -1,7 +1,7 @@
 module main
 
 import os
-import json2
+import x.json2
 import time
 import sync.stdatomic
 
@@ -602,7 +602,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 					c.write_want = 2
 				}
 			} else {
-				n = int(C.vaddy_send(c.fd, data.data, uint(data.len), 0))
+				n = int(C.vaddy_send(c.fd, data.data, u64(data.len), 0))
 				if n < 0 && C.vaddy_again() == 0 {
 					c.dead = true
 					return
@@ -630,7 +630,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 					c.backend_write_want = 2
 				}
 			} else {
-				n = int(C.vaddy_send(c.backend, data.data, uint(data.len), 0))
+				n = int(C.vaddy_send(c.backend, data.data, u64(data.len), 0))
 				if n < 0 && C.vaddy_again() == 0 { return error('upstream write failed') }
 			}
 			if n > 0 {
@@ -657,7 +657,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 					} else { return error('upstream TLS read failed') }
 				} else { c.backend_read_want = 1 }
 			} else {
-				n = int(C.vaddy_recv(c.backend, &scratch[0], uint(limit), 0))
+				n = int(C.vaddy_recv(c.backend, &scratch[0], u64(limit), 0))
 				if n < 0 { backend_readable = false }
 				if n < 0 && C.vaddy_again() == 0 { return error('upstream read failed') }
 				if n == 0 { s.backend_eof(mut c)! }
@@ -689,7 +689,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 					c.read_want = 1
 				}
 			} else {
-				n = int(C.vaddy_recv(c.fd, &scratch[0], uint(scratch.len), 0))
+				n = int(C.vaddy_recv(c.fd, &scratch[0], u64(scratch.len), 0))
 				if n < 0 { client_readable = false }
 				if n == 0 || (n < 0 && C.vaddy_again() == 0) {
 					c.dead = true
@@ -824,8 +824,8 @@ fn run_server(cfg Config, opts Options) ! {
 	defer { C.vaddy_queue_close(s.queue) }
 	s.runtime_store = &RuntimeStore{}
 	s.runtime_store.current = prepare_runtime(cfg, 1, s.runtime_store.log_mutex)!
-	s.backends = s.runtime_store.current.backends
-	s.access_logs = s.runtime_store.current.logs
+	s.backends = s.runtime_store.current.backends.clone()
+	s.access_logs = s.runtime_store.current.logs.clone()
 	defer { s.close_runtimes() }
 	s.run_id = new_reload_id()!
 	atomic_write(os.join_path(opts.data, 'run.id'), s.run_id)!
@@ -897,7 +897,8 @@ fn (mut s Server) serve_events() ! {
 		if s.draining && s.clients.len == 0 { break }
 		n := C.vaddy_wait(s.queue, &events[0], events.len, 1000)
 		if n < 0 && C.vaddy_again() == 0 { return error('event queue failed') }
-		for i in 0 .. if n > 0 { n } else { 0 } {
+		ready := if n > 0 { n } else { 0 }
+		for i in 0 .. ready {
 			event := events[i]
 			if event.fd == s.control_fd {
 				s.drain_incoming()

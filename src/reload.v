@@ -4,7 +4,7 @@ import os
 import time
 import sync
 import sync.stdatomic
-import json2
+import x.json2
 import crypto.rand as crypto_rand
 import encoding.hex
 
@@ -108,8 +108,8 @@ fn (mut s Server) replace_config(input string) ! {
 	s.runtime_store.mutex.unlock()
 	s.retired << previous
 	s.cfg = cfg
-	s.backends = candidate.backends
-	s.access_logs = candidate.logs
+	s.backends = candidate.backends.clone()
+	s.access_logs = candidate.logs.clone()
 	eprintln('vaddy: configuration reloaded (generation ${candidate.id})')
 }
 

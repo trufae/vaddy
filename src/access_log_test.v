@@ -42,6 +42,20 @@ fn test_log_output_validation_and_disabled_rotation() ! {
 	}
 }
 
+fn test_log_duration_compound_units_and_limits() ! {
+	assert log_duration('1h30m')! == 90 * time.minute
+	assert log_duration('+2h45m30.5s')! == 2 * time.hour + 45 * time.minute + 30500 * time.millisecond
+	assert log_duration('.5s')! == 500 * time.millisecond
+	assert log_duration('1.000000001s')! == time.second + time.nanosecond
+	assert log_duration('2us3µs4μs')! == 9 * time.microsecond
+	assert log_duration('9223372036854775807ns')! == time.Duration(max_i64)
+	for value in ['0', '+0', '-0', '-0s'] { assert log_duration(value)! == 0 }
+	for value in ['', '++1s', '+', '-1ns', '1', '.s', '1..5s', '1s-1s', 'NaNs',
+		'1w', '9223372036854775808ns', '18446744073709551616ns', '9223372036854775807ns1ns', '2562048h'] {
+		if _ := log_duration(value) { assert false, value }
+	}
+}
+
 fn test_log_file_replacement_between_writes() ! {
 	dir := os.join_path(os.temp_dir(), 'vaddy-log-replace-${os.getpid()}')
 	defer { os.rmdir_all(dir) or {} }

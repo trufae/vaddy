@@ -38,8 +38,8 @@ fn C.vaddy_tls_pending(voidptr) int
 fn C.vaddy_tls_has_pending(voidptr) int
 fn C.vaddy_tls_free(voidptr)
 fn C.vaddy_tls_ctx_free(voidptr)
-fn C.vaddy_recv(int, voidptr, uint, int) int
-fn C.vaddy_send(int, voidptr, uint, int) int
+fn C.vaddy_recv(int, voidptr, u64, int) int
+fn C.vaddy_send(int, voidptr, u64, int) int
 fn C.vaddy_close(int) int
 fn C.vaddy_queue_close(int)
 fn C.vaddy_unlock(int)

@@ -5,7 +5,7 @@ import time
 import strconv
 import net.urllib
 import encoding.html
-import json2
+import x.json2
 
 struct FileConfig {
 mut:

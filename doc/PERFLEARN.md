@@ -1,6 +1,6 @@
 # Performance lessons from Vaddy
 
-Recorded on 2026-11-10 to preserve the findings and decisions from implementing
+Recorded on 2026-11-10 and updated on 2026-11-11 to preserve the findings and decisions from implementing
 and optimizing Vaddy. This document is a handoff for future work, with lessons
 about V code, networking, TLS, threading, and measurement. It describes this
 repository and the compiler actually used; it is not a claim about every V
@@ -22,6 +22,33 @@ Contents: [Results](#current-state-and-evidence) ·
 [Code map](#code-and-evidence-map)
 
 ## Current state and evidence
+
+The November 11 follow-up addresses costs added with the everyday features.
+See the latest matched results in [BENCHMARKS.md](BENCHMARKS.md). Three changes
+preserve feature behavior:
+
+- Replace the eagerly initialized MIME maps with a sorted, fixed extension
+  table. The generated table retains all 1,203 mappings from the pinned V
+  compiler, with source hash, regeneration script and license notices. Fixed
+  string entries avoid loading the much larger metadata database into the GC
+  heap when starting a proxy-only server.
+- Avoid parsing freshly serialized request headers when there are no proxy
+  header edits, and collect response headers only when access-log targets exist.
+  The remaining header scan extracts names/values directly instead of splitting
+  the entire header into temporary lines. Field-count and byte limits still
+  apply on the faster path; proxy edits still normalize Host after editing.
+- Transfer ownership of response-buffer storage when the destination is empty.
+  Uncompressed responses retain two bounded queues, but no longer copy bytes
+  between drained queues. A nonempty destination keeps its queued bytes and
+  accepts only what fits, preserving ordering and pending TLS write lengths.
+
+The function profile motivating the header work recorded three calls to
+`buffer_header_fields` per proxied request even with logging disabled. That
+profile was used to locate work, not to report throughput. Unit tests cover
+header limits, duplicate fields and independent buffer ownership; the TCP/TLS,
+HTTP/2, compression, static-file, reload and Caddy compatibility suites all pass.
+
+The following records describe the earlier optimization pass.
 
 The optimized implementation is built. It defaults to one event-loop worker;
 `--workers N` enables up to 64, capped by the connection limit. Parsing, buffer
@@ -538,9 +565,9 @@ profile so multiple workers/processes do not contend for or overwrite its file.
 
 Next steps, in order of usefulness:
 
-1. Rerun real TCP/TLS comparison with the current one- and two-worker builds.
-   The original Caddy comparison predates the optimizations. There is no verified
-   claim yet that current Vaddy outruns Caddy at 32 clients.
+1. Extend the latest real TCP/TLS comparison to two workers. The November 11
+   regression and optimization comparisons measure one Vaddy worker. There is
+   no verified claim that current Vaddy outruns Caddy at 32 clients.
 2. Vary concurrency, payload size, upload/download direction, TLS versus plain
    HTTP, connection churn, and slow readers/writers. Add latency percentiles for
    tail behavior. Compare both equal CPU budgets and unrestricted throughput.

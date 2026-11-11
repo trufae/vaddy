@@ -50,12 +50,14 @@ worker counts and certificate storage.
 
 ## Performance
 
-The latest TCP/TLS regression check found **4.2% lower median throughput** at
-32 clients after adding HTTP/2, compression and static files. Idle memory grew
-from **13.6 to 20.4 MiB**, and sampled peak memory from **29.5 to 40.9 MiB** at
-32 clients. All 2.70 million requests passed. Vaddy still used less CPU and
-memory than the Caddy reference, while Caddy delivered more aggregate throughput.
-These are short local measurements of one HTTP/1.1 proxy workload.
+The latest optimizations improved median TCP/TLS throughput by **12.0%** and
+reduced CPU per request by **11.0%** at 32 clients versus the preceding feature
+build. Idle memory fell from **20.5 to 14.4 MiB**, and sampled peak memory from
+**40.9 to 38.7 MiB**. A 64 KiB response check also improved throughput by **13.4%**.
+All 2.88 million measured requests passed. Vaddy still used less CPU and memory
+than the Caddy reference, while Caddy delivered more aggregate throughput.
+These are short local HTTP/1.1 proxy measurements with compression and logging
+disabled; the HTTP/2, compression, file-serving and log compatibility tests pass.
 
 The comparison also builds Raddy in release mode. Its current upstream build
 hits connection-allocation failures under sustained load on the measured macOS

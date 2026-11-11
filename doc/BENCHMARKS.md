@@ -1,5 +1,84 @@
 # Benchmarks
 
+## Performance follow-up: 2026-11-11
+
+Three optimizations retain the feature set while reducing overhead: a fixed MIME
+extension table (`b4231fe`), less repeated header parsing and optional log-header
+capture (`97d4b08`), and storage transfer between drained output queues
+(`1c8b16f`). The matched rerun measured **12.0% higher throughput** and **11.0%
+less CPU per request** at 32 clients. Idle RSS fell **29.8%**, sampled peak RSS
+fell **5.3%**, and the executable shrank **28.6%** (2,079,760 to 1,485,024 bytes).
+Shared library files are additional. This reduces, but does not eliminate, the
+memory increase recorded in the preceding feature regression check below.
+
+The baseline is the exact executable saved before these edits, at repository
+revision `7937c64` (runtime code `f179106`). Its SHA-256 matches the feature build
+in the previous report. The optimized runtime is `1c8b16f`. Both use pinned V
+`b7b4dd46eeb3d39cf8d3e8ef757093d872cbc230`, Apple Clang 21, and
+`-prod -cc clang -gc boehm -d use_bundled_libgc -d use_openssl`. Native library
+versions remain OpenSSL 3.6.5, nghttp2 1.70.0 and Zstandard 1.5.7. Caddy remains
+the reference at `8a6ab2b7bb3c6b83ed8d8031d6457375629858d8`.
+
+The main workload is unchanged: HTTP/1.1 over TLS 1.3, 512-byte response, asset
+rewrite, response-header removals, one Vaddy worker, and 1/32 clients. Compression,
+static serving and access logging are disabled. Each group has three ten-second
+samples, two seconds idle and one second warmup per sample. The order rotates so
+each server occupies each position once. CPU and RSS cover only the server;
+the backend and load generator run separately.
+
+| Build | Clients | Requests/s | CPU | CPU/request | Mean latency | Idle RSS | Sampled peak RSS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Vaddy before | 1 | 6,558 | 41.0% | 62.32 µs | 0.152 ms | 20.47 MiB | 29.38 MiB |
+| Vaddy optimized | 1 | 6,977 | 38.3% | 54.90 µs | 0.143 ms | 14.33 MiB | 27.92 MiB |
+| Caddy reference | 1 | 5,186 | 104.5% | 201.52 µs | 0.193 ms | 43.20 MiB | 52.47 MiB |
+| Vaddy before | 32 | 19,636 | 98.8% | 50.41 µs | 1.629 ms | 20.47 MiB | 40.89 MiB |
+| Vaddy optimized | 32 | 21,991 | 98.7% | 44.88 µs | 1.455 ms | 14.38 MiB | 38.70 MiB |
+| Caddy reference | 32 | 28,028 | 361.2% | 128.86 µs | 1.141 ms | 43.86 MiB | 67.16 MiB |
+
+All **2,664,680** requests succeeded, with **zero errors** in 18 samples. The
+one-client median throughput improved 6.4%; its CPU cost fell 11.9%. At 32 clients,
+throughput ranges were 19,313–19,712 before and 21,881–22,119 after. These are
+short measurements on a shared 10-logical-CPU macOS host with background OS
+activity, not production capacity estimates or statistical proof. Compare the
+paired builds within this run; absolute rates from earlier sessions reflect
+different host conditions. Caddy still has higher aggregate throughput while
+using more CPU cores. Raddy remains excluded for the connection-exhaustion issue
+documented below.
+
+A second check exercises larger body transfers: 64 KiB responses, 32 clients,
+three five-second samples per build, alternating order, otherwise the same
+workload. Throughput rose from **6,620 to 7,510 requests/s (+13.4%)**, and CPU
+cost fell from **150.03 to 132.26 µs/request (−11.8%)**. All **212,610** requests
+passed. Neither benchmark measures HTTP/2, compression or static-file throughput,
+or the speed of access-log output.
+
+Validation also passed all eight V test files, TCP/TLS and HTTPS-upstream
+integration, live reloads, HTTP/2 wire tests against Caddy, 19 compression cases,
+27 static-file cases plus multipart/cache checks, and 61 redirect/header/log
+compatibility cases. Tests include queue ownership, header output bounds,
+streaming, TLS backpressure, concurrent workers and compressed HTTP/2 responses.
+
+Raw samples, timestamps, host load averages, source revisions and binary hashes:
+[512-byte comparison](../tests/benchmark-results-2026-11-11-optimized.json),
+[64 KiB comparison](../tests/benchmark-results-2026-11-11-optimized-large.json).
+See [performance lessons](PERFLEARN.md) for the implementation rationale.
+
+To reproduce from a fresh baseline export:
+
+```sh
+mkdir -p .build/benchmark-feature-before
+git archive 7937c64 | tar -x -C .build/benchmark-feature-before
+make -C .build/benchmark-feature-before V="$PWD/.tools/v/v" \
+    VFLAGS='-prod -cc clang -gc boehm -d use_bundled_libgc'
+make V="$PWD/.tools/v/v" VFLAGS='-prod -cc clang -gc boehm -d use_bundled_libgc'
+python3 tests/compare.py --servers vaddy-baseline vaddy caddy \
+    --vaddy-baseline .build/benchmark-feature-before/vaddy \
+    --seconds 10 --runs 3 --concurrency 1,32 --output benchmark-optimized-new.json
+python3 tests/compare.py --servers vaddy-baseline vaddy \
+    --vaddy-baseline .build/benchmark-feature-before/vaddy \
+    --seconds 5 --runs 3 --concurrency 32 --size 65536 --output benchmark-large-new.json
+```
+
 ## Feature regression check: 2026-11-11
 
 The HTTP/2, compression and static-file additions have a measurable memory cost

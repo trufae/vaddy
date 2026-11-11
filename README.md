@@ -50,10 +50,12 @@ worker counts and certificate storage.
 
 ## Performance
 
-The initial TCP/TLS comparison showed lower CPU and memory use than Caddy, with
-Caddy ahead in aggregate throughput at 32 clients. Subsequent Vaddy optimizations
-improved the separate TLS socket-pair benchmark by **10%** with **11.5% less CPU
-per request**. A fresh TCP comparison is needed to measure the current gap.
+The latest TCP/TLS regression check found **4.2% lower median throughput** at
+32 clients after adding HTTP/2, compression and static files. Idle memory grew
+from **13.6 to 20.4 MiB**, and sampled peak memory from **29.5 to 40.9 MiB** at
+32 clients. All 2.70 million requests passed. Vaddy still used less CPU and
+memory than the Caddy reference, while Caddy delivered more aggregate throughput.
+These are short local measurements of one HTTP/1.1 proxy workload.
 
 The comparison also builds Raddy in release mode. Its current upstream build
 hits connection-allocation failures under sustained load on the measured macOS

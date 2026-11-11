@@ -72,7 +72,15 @@ python3 tests/compare.py --plain --concurrency 1,32,128 --output benchmark-http.
 python3 tests/compare.py --servers caddy vaddy
 # Supply an alternate release binary:
 python3 tests/compare.py --raddy ./raddy/target/release/raddy
+# Compare an earlier Vaddy binary in the same rotated schedule:
+python3 tests/compare.py --servers vaddy-baseline vaddy caddy \
+    --vaddy-baseline .build/benchmark-before/vaddy --output benchmark-regression.json
 ```
+
+The optional `vaddy-baseline` entry uses the same configuration and worker count
+as `vaddy`. Reports include binary sizes/hashes, per-sample timestamps and host
+load averages. Let competing builds/tests finish before measuring: valid HTTP
+responses alone do not make timing results comparable on a saturated host.
 
 Raddy's generated Caddyfile adds `order header after handle`: its current header
 handler runs eagerly, so the default ordering leaves upstream response headers

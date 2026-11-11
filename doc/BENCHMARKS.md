@@ -1,6 +1,80 @@
-# Measurements obtained on 2026-11-10
+# Benchmarks
 
-## Raddy release integration
+## Feature regression check: 2026-11-11
+
+The HTTP/2, compression and static-file additions have a measurable memory cost
+on the existing proxy workload. In this rerun, median throughput fell **0.6%**
+with one client and **4.2%** with 32 clients. CPU time per request increased
+**3.8–3.9%**. Idle RSS increased **6.84 MiB (50.3%)**, and sampled peak RSS with
+32 clients increased **11.47 MiB (38.9%)**.
+
+This compares Vaddy immediately before those features (`8e22fc5`) with the feature
+build (`f179106`), alongside the same Caddy reference
+`8a6ab2b7bb3c6b83ed8d8031d6457375629858d8`. Both Vaddy binaries use the pinned V
+compiler `b7b4dd4`, Apple Clang 21, `-prod -gc boehm -d use_bundled_libgc`, and
+OpenSSL 3.6.5. The current binary additionally links nghttp2 1.70.0 and libzstd
+1.5.7. The executable grew from 1,110,352 bytes (1.06 MiB) to 2,079,760 bytes
+(1.98 MiB); shared library files are additional.
+
+The matched workload is HTTP/1.1 over TLS 1.3, a 512-byte response, the existing
+asset rewrite and response-header removals, one Vaddy worker, and 1/32 clients.
+Compression and file serving are not enabled in the configuration. This checks
+the overhead on existing proxy traffic; it does not measure HTTP/2, compression
+or file-serving throughput. Each group has three ten-second samples, with
+server order rotated across repetitions, two seconds of idle observation and a
+one-second warmup per sample. The separate Go backend/client, response checks
+and server-only CPU/RSS accounting are unchanged from the historical harness.
+
+| Build | Clients | Requests/s | CPU | CPU/request | Mean latency | Idle RSS | Sampled peak RSS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Vaddy before | 1 | 7,600 | 40.9% | 53.95 µs | 0.131 ms | 13.59 MiB | 27.44 MiB |
+| Vaddy current | 1 | 7,553 | 41.8% | 56.00 µs | 0.132 ms | 20.44 MiB | 29.33 MiB |
+| Caddy reference | 1 | 5,824 | 104.6% | 179.29 µs | 0.172 ms | 43.33 MiB | 52.53 MiB |
+| Vaddy before | 32 | 19,838 | 98.6% | 49.70 µs | 1.613 ms | 13.59 MiB | 29.45 MiB |
+| Vaddy current | 32 | 19,000 | 98.8% | 51.62 µs | 1.684 ms | 20.44 MiB | 40.92 MiB |
+| Caddy reference | 32 | 30,145 | 394.2% | 131.15 µs | 1.061 ms | 43.38 MiB | 67.33 MiB |
+
+All **2,699,580** measured requests succeeded with **zero errors** across all
+18 samples. Throughput ranges overlap: at 32 clients, before was
+19,279–19,945 requests/s and current was 18,749–19,830. With one client, before
+was 7,405–7,699 and current was 7,391–7,606. Three short samples on a shared
+10-CPU macOS host do not establish statistical significance for a small timing
+change; the percentages are observed median differences, not precise capacity
+predictions. The consistent memory increase is the clearest regression.
+
+The first attempt was disrupted by an unrelated parallel V compiler test run
+(load average reached 71.81). Its 1,302,208 requests also passed validation,
+but its timing medians must not be used for regression claims. The full run was
+repeated after the active compiler jobs subsided. Background activity remained;
+per-sample timestamps and host load averages are included in the rerun report.
+Raddy was excluded because its previously recorded connection-exhaustion failure
+would confound this Vaddy regression check.
+
+Raw data and executable hashes:
+[rerun](../tests/benchmark-results-2026-11-11-features.json),
+[contended attempt](../tests/benchmark-results-2026-11-11-features-contended.json).
+The report records source revisions, compiler flags, library versions, binary
+sizes and SHA-256 hashes. These results should be compared with the matched
+pre-feature build above, rather than attributed to all changes since the older
+November 10 benchmark.
+
+To repeat with an exported pre-feature source tree:
+
+```sh
+mkdir -p .build/benchmark-before
+# Use a fresh destination when exporting a different revision.
+git archive 8e22fc5 | tar -x -C .build/benchmark-before
+make -C .build/benchmark-before V="$PWD/.tools/v/v" \
+    VFLAGS='-prod -cc clang -gc boehm -d use_bundled_libgc'
+make V="$PWD/.tools/v/v" VFLAGS='-prod -cc clang -gc boehm -d use_bundled_libgc'
+python3 tests/compare.py --servers vaddy-baseline vaddy caddy \
+    --vaddy-baseline .build/benchmark-before/vaddy \
+    --seconds 10 --runs 3 --concurrency 1,32 --output benchmark-results-new.json
+```
+
+## Historical measurements obtained on 2026-11-10
+
+### Raddy release integration
 
 `make compare` now includes Caddy, Vaddy and Raddy. Raddy v0.9.0 was cloned from
 `fokx/raddy` at `451fd9ffd1c9c7d951c7f86a09ec6a57e5db1625` and built, without
@@ -35,7 +109,7 @@ make compare  # includes Raddy; currently fails validation on this macOS host
 python3 tests/compare.py --servers caddy vaddy
 ```
 
-## Caddy versus Vaddy: TCP/TLS baseline
+### Caddy versus Vaddy: TCP/TLS baseline
 
 The user ran `make compare` successfully after downloading Caddy's dependencies.
 The saved JSON was checked against the summary below: all 12 samples completed,
@@ -72,7 +146,7 @@ Environment and method:
 | Caddy | 32 | 26,482 | 372.0% | 140.82 µs | 1.208 ms | 43.4 MiB | 67.3 MiB |
 | Vaddy | 32 | 20,914 | 98.4% | 47.00 µs | 1.530 ms | 7.5 MiB | 12.7 MiB |
 
-### Interpretation
+#### Interpretation
 
 Lower CPU time per request is better. Relative changes below are calculated
 from the unrounded medians in the archived JSON:
@@ -96,7 +170,7 @@ they do not establish production capacity, long-term memory use, certificate
 management cost, or performance for other body sizes/protocols. Caddy implements
 many features outside Vaddy's current scope.
 
-### Reproduce
+#### Reproduce
 
 ```sh
 make vaddy caddy-bench
@@ -110,7 +184,7 @@ The harness is in `tests/compare.py` and `tests/bench_driver.go`. The source JSO
 at the repository root can be overwritten by another run; the archived baseline
 above is retained for comparisons with subsequent optimizations.
 
-## Throughput optimization: separate-process TLS socket-pair measurements
+### Throughput optimization: separate-process TLS socket-pair measurements
 
 The request path was profiled and optimized after the TCP baseline above:
 
@@ -182,14 +256,14 @@ Both commands rebuild Vaddy as needed and build Caddy and Raddy. `--vaddy-worker
 is saved in the report; Caddy and Raddy keep their default scheduler settings. The original TCP
 baseline remains archived above until new comparable measurements are available.
 
-## Executable sizes
+### Executable sizes
 
 The binaries present for this baseline are 826,320 bytes (807 KiB) for Vaddy and
 54,161,794 bytes (51.65 MiB) for Caddy. Vaddy's shared OpenSSL and GC libraries are
 additional. The optimized Vaddy build is 827,568 bytes (808 KiB). File size is
 separate from the RSS measurements above.
 
-## Vaddy socket-pair microbenchmark
+### Vaddy socket-pair microbenchmark
 
 Command: `make bench`, three separate runs. Each run sends 100,000 sequential
 HTTP/1.1 keep-alive requests, with an asset rewrite and a 512-byte response,

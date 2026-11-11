@@ -5,6 +5,8 @@ Uses an external Go backend and load process. CPU/RSS measurements cover only
 the server being compared; certificate creation and load generation are excluded.
 """
 import argparse
+from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -68,7 +70,7 @@ def measure(name, binary, config, root, driver, url, concurrency, seconds, size,
     data.mkdir(exist_ok=True)
     env = dict(os.environ, XDG_DATA_HOME=str(data), XDG_CONFIG_HOME=str(data))
     command = [binary, "run", "--config", str(config), "--adapter", "caddyfile"]
-    if name == "vaddy":
+    if name in ("vaddy", "vaddy-baseline"):
         command += ["--data", str(data), "--bind", "127.0.0.1", "--workers", str(vaddy_workers)]
     elif name == "raddy":
         env["RADDY_DATA_DIR"] = str(data)
@@ -98,6 +100,8 @@ def measure(name, binary, config, root, driver, url, concurrency, seconds, size,
                 return dict(warmup, server=name, concurrency=concurrency, valid=False,
                             phase="warmup", server_log=log.read()[-8000:])
             cpu_start = cpu_seconds(server.pid)
+            measurement_started = datetime.now(timezone.utc).isoformat()
+            host_load_start = os.getloadavg() if hasattr(os, 'getloadavg') else None
             peak_rss = rss_kib(server.pid)
             load = subprocess.Popen(load_command + ["-seconds", str(seconds)], stdout=subprocess.PIPE, text=True)
             while load.poll() is None:
@@ -109,6 +113,9 @@ def measure(name, binary, config, root, driver, url, concurrency, seconds, size,
             cpu_used = cpu_seconds(server.pid) - cpu_start
             result = json.loads(output)
             result.update(server=name, concurrency=concurrency,
+                          measurement_started=measurement_started,
+                          host_load_average_start=host_load_start,
+                          host_load_average_end=os.getloadavg() if hasattr(os, 'getloadavg') else None,
                           cpu_seconds=cpu_used,
                           cpu_percent=100 * cpu_used / result["wall_seconds"],
                           cpu_us_per_request=1e6 * cpu_used / max(1, result["requests"]),
@@ -131,8 +138,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--caddy", default=str(ROOT / "caddy-bench"))
     parser.add_argument("--vaddy", default=str(ROOT / "vaddy"))
+    parser.add_argument("--vaddy-baseline", help="optional earlier Vaddy binary for an interleaved regression comparison")
     parser.add_argument("--raddy", default=str(ROOT / ("raddy-bench.exe" if os.name == "nt" else "raddy-bench")))
-    parser.add_argument("--servers", nargs="+", choices=("caddy", "vaddy", "raddy"),
+    parser.add_argument("--servers", nargs="+", choices=("caddy", "vaddy", "raddy", "vaddy-baseline"),
                         default=["caddy", "vaddy", "raddy"], help="servers to compare (default: all three)")
     parser.add_argument("--seconds", type=float, default=10)
     parser.add_argument("--runs", type=int, default=3)
@@ -142,7 +150,7 @@ def main():
     parser.add_argument("--plain", action="store_true", help="HTTP instead of TLS 1.3")
     parser.add_argument("--output", default="benchmark-results.json")
     args = parser.parse_args()
-    binaries = {name: shutil.which(getattr(args, name)) for name in args.servers}
+    binaries = {name: shutil.which(getattr(args, name.replace('-', '_')) or '') for name in args.servers}
     if not all(binaries.values()):
         missing = ", ".join(name for name, binary in binaries.items() if not binary)
         parser.error(f"missing binaries: {missing}; build first: make && make caddy-bench raddy-bench")
@@ -197,22 +205,25 @@ def main():
                 # Resource exhaustion can affect subsequent servers on this host.
                 if not result["valid"]:
                     break
-            report = {"platform": platform.platform(), "tls": not args.plain, "http_version": "1.1", "response_bytes": args.size, "vaddy_workers": args.vaddy_workers, "servers": args.servers, "runs": args.runs, "seconds": args.seconds, "config_overrides": config_overrides, "results": results}
+            provenance = {name: {"path": str(Path(binary).resolve()), "bytes": Path(binary).stat().st_size,
+                                "sha256": hashlib.sha256(Path(binary).read_bytes()).hexdigest()}
+                          for name, binary in binaries.items()}
+            report = {"recorded_at": datetime.now(timezone.utc).isoformat(), "platform": platform.platform(), "logical_cpus": os.cpu_count(), "tls": not args.plain, "http_version": "1.1", "response_bytes": args.size, "vaddy_workers": args.vaddy_workers, "servers": args.servers, "runs": args.runs, "seconds": args.seconds, "config_overrides": config_overrides, "binaries": provenance, "results": results}
             Path(args.output).write_text(json.dumps(report, indent=2) + "\n")
             print("\nMedians (CPU%=100 means one fully used core; peak RSS sampled every 100ms):")
-            print("server  clients     req/s    CPU%    CPU us/req   latency ms   idle MiB   peak MiB")
+            print("server          clients     req/s    CPU%    CPU us/req   latency ms   idle MiB   peak MiB")
             for c in concurrency:
                 for name in args.servers:
                     rows = [row for row in results if row["server"] == name and row["concurrency"] == c]
                     invalid = sum(not row["valid"] for row in rows)
                     if invalid:
-                        print(f"{name:7} {c:7} INVALID ({invalid}/{len(rows)} samples failed; see {args.output})")
+                        print(f"{name:14} {c:7} INVALID ({invalid}/{len(rows)} samples failed; see {args.output})")
                         continue
                     if len(rows) != args.runs:
-                        print(f"{name:7} {c:7} INCOMPLETE ({len(rows)}/{args.runs} samples)")
+                        print(f"{name:14} {c:7} INCOMPLETE ({len(rows)}/{args.runs} samples)")
                         continue
                     median = lambda key: statistics.median(row[key] for row in rows)
-                    print(f'{name:7} {c:7} {median("requests_per_second"):9.0f} {median("cpu_percent"):7.1f} {median("cpu_us_per_request"):13.2f} {median("mean_latency_ms"):12.3f} {median("idle_rss_mib"):10.1f} {median("sampled_peak_rss_mib"):10.1f}')
+                    print(f'{name:14} {c:7} {median("requests_per_second"):9.0f} {median("cpu_percent"):7.1f} {median("cpu_us_per_request"):13.2f} {median("mean_latency_ms"):12.3f} {median("idle_rss_mib"):10.1f} {median("sampled_peak_rss_mib"):10.1f}')
             if any(not row["valid"] for row in results):
                 parser.exit(1, f"Comparison contains invalid samples; saved diagnostics to {args.output}\n")
         finally:

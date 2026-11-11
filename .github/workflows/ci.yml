@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
   native:
@@ -20,7 +20,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-14, windows-2022]
+        include:
+          - os: ubuntu-24.04
+            target: linux-x86_64
+          - os: macos-15
+            target: macos-arm64
+          - os: macos-15-intel
+            target: macos-x86_64
+          - os: windows-2022
+            target: windows-x86_64
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,6 +57,7 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-ca-certificates
             mingw-w64-ucrt-x86_64-re2
             mingw-w64-ucrt-x86_64-zlib
             mingw-w64-ucrt-x86_64-nghttp2
@@ -91,6 +100,23 @@ jobs:
           make encode V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
           make files V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
 
+      - name: Package download (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          python3 -B -m unittest discover -s ci -p 'test_*.py'
+          python3 ci/package-release.py "${{ matrix.target }}" ./vaddy
+
+      - name: Package download (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: python3 ci/package-release.py "${{ matrix.target }}" ./vaddy.exe
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vaddy-${{ matrix.target }}
+          path: dist/vaddy-${{ matrix.target }}.*
+          if-no-files-found: error
+
   alpine:
     name: Alpine Linux x86-64
     runs-on: ubuntu-24.04
@@ -101,8 +127,70 @@ jobs:
           persist-credentials: false
       - name: Build and test Alpine binary
         run: make alpine
-      - uses: actions/upload-artifact@v4
+      - name: Package download
+        run: python3 ci/package-release.py alpine-x86_64 dist/vaddy-alpine-x86_64
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vaddy-alpine-x86_64
-          path: dist/vaddy-alpine-x86_64
+          path: dist/vaddy-alpine-x86_64.tar.gz
           if-no-files-found: error
+
+  check_release:
+    if: github.event_name == 'push' && github.ref_type == 'tag' && !github.event.deleted
+    needs: [native, alpine]
+    runs-on: ubuntu-24.04
+    outputs:
+      is_release: ${{ steps.tag.outputs.is_release }}
+    steps:
+      - name: Select tags beginning with a digit
+        id: tag
+        shell: bash
+        run: |
+          case "$GITHUB_REF_NAME" in
+            [0-9]*) echo 'is_release=yes' >> "$GITHUB_OUTPUT" ;;
+            *) echo 'is_release=no' >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  release:
+    if: needs.check_release.outputs.is_release == 'yes'
+    needs: check_release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: vaddy-*
+          merge-multiple: true
+          path: dist
+      - name: Verify all downloads and generate checksums
+        working-directory: dist
+        run: |
+          for asset in vaddy-linux-x86_64.tar.gz vaddy-alpine-x86_64.tar.gz vaddy-macos-arm64.tar.gz vaddy-macos-x86_64.tar.gz vaddy-windows-x86_64.zip; do
+            test -s "$asset"
+          done
+          sha256sum vaddy-*.tar.gz vaddy-*.zip > SHA256SUMS
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            Download the archive for your platform and extract it. Windows and macOS include their native libraries and OpenSSL; Linux requires Ubuntu 24.04 runtime packages, and Alpine requires Alpine 3.24 runtime packages.
+
+            See the included README.md for installation and use SHA256SUMS to verify the downloads.
+          files: |
+            dist/vaddy-linux-x86_64.tar.gz
+            dist/vaddy-alpine-x86_64.tar.gz
+            dist/vaddy-macos-arm64.tar.gz
+            dist/vaddy-macos-x86_64.tar.gz
+            dist/vaddy-windows-x86_64.zip
+            dist/SHA256SUMS

@@ -25,7 +25,24 @@ unsupported directives fail validation.
 | Concurrency | epoll/kqueue/Windows polling, optional workers and a global connection limit |
 | Certificates | Public ACME, a local development CA, manual certificates and live reload |
 
-## Get started
+## Download
+
+Download a ready-built archive from the [latest release](https://github.com/trufae/vaddy/releases/latest):
+
+| Platform | Download |
+| --- | --- |
+| Windows x86-64 | [ZIP](https://github.com/trufae/vaddy/releases/latest/download/vaddy-windows-x86_64.zip) |
+| macOS Apple Silicon | [tar.gz](https://github.com/trufae/vaddy/releases/latest/download/vaddy-macos-arm64.tar.gz) |
+| macOS Intel | [tar.gz](https://github.com/trufae/vaddy/releases/latest/download/vaddy-macos-x86_64.tar.gz) |
+| Linux x86-64 (Ubuntu 24.04) | [tar.gz](https://github.com/trufae/vaddy/releases/latest/download/vaddy-linux-x86_64.tar.gz) |
+| Alpine Linux x86-64 (3.24) | [tar.gz](https://github.com/trufae/vaddy/releases/latest/download/vaddy-alpine-x86_64.tar.gz) |
+
+Windows and macOS archives include native libraries and OpenSSL. Linux and Alpine
+use system runtime packages. See [installation instructions](doc/INSTALL.md) and
+[SHA-256 checksums](https://github.com/trufae/vaddy/releases/latest/download/SHA256SUMS).
+Downloads become available when the first numeric tag finishes building.
+
+## Build from source
 
 Requires V, C and C++17 compilers, `pkg-config`, OpenSSL 3, RE2, zlib, nghttp2 and Zstandard development libraries, and the
 `openssl` executable. The default build uses Clang and Boehm GC.

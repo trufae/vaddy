@@ -17,14 +17,51 @@ integration test with a temporary local CA.
 | Job | Toolchain | Networking backend |
 | --- | --- | --- |
 | Ubuntu 24.04 | Clang, system OpenSSL | epoll |
-| macOS 14 | Clang, Homebrew OpenSSL 3 | kqueue |
+| macOS 15, Apple Silicon and Intel | Clang, Homebrew OpenSSL 3 | kqueue |
 | Windows Server 2022 | MSYS2 UCRT64 GCC and OpenSSL; native Windows executable | Winsock `WSAPoll` |
 | Alpine x86-64 | Clang and musl in an Alpine 3.24 container | epoll |
 
-The Alpine job uses the same Makefile target as a local build and uploads
-`vaddy-alpine-x86_64` as an Actions artifact. These are build checks and
-artifacts, not a release or deployment workflow. The workflow uses read-only
-repository permissions and does not run a public CA issuance test.
+The Alpine job uses the same Makefile target as a local build. Each platform
+uploads an installable archive as an Actions artifact. Build jobs use read-only
+repository permissions and do not run a public CA issuance test.
+
+## Tag releases
+
+Push a tag whose first character is a digit to publish a GitHub Release:
+
+```sh
+git tag 0.1.0
+git push origin 0.1.0
+```
+
+The tagged commit must contain the workflow. Branch pushes, pull requests,
+manual runs and tags such as `v0.1.0` or `nightly` do not publish releases.
+All native and Alpine build, test and packaging jobs must succeed first.
+The publishing job alone receives `contents: write` and uses the built-in
+`GITHUB_TOKEN`; no release secret is needed.
+
+Each release contains five archives: Windows x86-64, macOS arm64 and x86-64,
+Ubuntu 24.04 x86-64 and Alpine 3.24 x86-64, plus `SHA256SUMS`. The archive names
+stay constant so the README's `/releases/latest/download/` links keep working.
+Numeric tags are published as regular releases and marked latest, with generated
+release notes. Tag builds are not cancelled by subsequent pushes.
+
+[`ci/package-release.py`](../ci/package-release.py) packages the tested binaries,
+example config, installation instructions, build commit and third-party notices.
+On macOS it copies the transitive Homebrew libraries, rewrites their load paths
+relative to the executable and applies ad-hoc signatures. On Windows it copies
+the transitive UCRT64 DLLs, excluding Windows system DLLs. Both include OpenSSL
+and a CA bundle, and smoke-test the package with the build toolchain removed
+from `PATH`. macOS packages are not notarized. Linux and Alpine use the runtime
+packages listed in [installation instructions](INSTALL.md).
+
+The release assets use the pinned compiler fork from the main CI workflow;
+the separate stock-V workflow is a compatibility check. For a local packaging
+check after `make`, run (choosing the target for your host):
+
+```sh
+python3 ci/package-release.py macos-arm64 ./vaddy
+```
 
 Compiler and bootstrap revisions are pinned in [ci/toolchain.env](../ci/toolchain.env):
 
@@ -42,8 +79,8 @@ still receive updates; the complete environment is not bit-for-bit pinned.
 Instead of bootstrapping the fork, it installs an official release with
 [`vlang/setup-v`](https://github.com/vlang/setup-v) and runs the same build,
 unit tests, Caddyfile validation, integration test, and HTTP/2, encoding and
-file suites. It runs on Ubuntu 24.04 and macOS 14 (the release zips have no
-arm64 Windows asset). It proves Vaddy does not need the fork's patches.
+file suites. It runs on Ubuntu 24.04 and macOS 15. It checks whether Vaddy builds
+and passes its tests without the fork's patches.
 
 ```yaml
 - uses: vlang/setup-v@v1.7
@@ -104,8 +141,8 @@ make integration V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
 
 The result is `vaddy.exe`, using Winsock rather than WSL or a POSIX-emulation
 runtime. Run it with the matching UCRT64 OpenSSL, RE2, zlib, nghttp2, Zstandard and C++ runtime DLLs on `PATH`; automatic
-certificate management also needs the UCRT64 `openssl.exe`. The CI job executes
-within that environment and does not assemble a redistributable Windows bundle.
+certificate management also needs the UCRT64 `openssl.exe`. CI packages these
+dependencies in a ZIP that can run outside MSYS2; see [installation instructions](INSTALL.md).
 
 Worker notifications and socket-I/O tests use private loopback TCP pairs on
 Windows, where the POSIX `socketpair` call is unavailable. Each reactor owns its

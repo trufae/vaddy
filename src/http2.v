@@ -61,6 +61,7 @@ fn (mut frame Framing) consume_decoded(data []u8, mut output Buffer) !int {
 fn (mut s Server) close_h2_stream(mut parent Connection, id int) {
 	mut stream := parent.h2_streams[id] or { return }
 	s.log_access(mut stream, stream.h2_output_end)
+	stream.close_file()
 	stream.close_encoder()
 	release_runtime(mut stream)
 	s.close_backend(mut stream)
@@ -157,7 +158,7 @@ fn (mut s Server) pump_h2(mut parent Connection, event_fd int) ! {
 		if readable && !(parent.write_len > 0 && parent.write_want == 1) {
 			n := C.vaddy_tls_read(parent.tls, &scratch[0], scratch.len)
 			if n > 0 {
-				if C.vaddy_h2_receive(parent.h2, &scratch[0], n, mono_ms()) != n { return error('invalid HTTP/2 input') }
+				if C.vaddy_h2_receive(parent.h2, &scratch[0], n) != n { return error('invalid HTTP/2 input') }
 				progress = true
 				parent.read_want = 1
 			} else {

@@ -23,7 +23,7 @@ mut:
 }
 fn C.vaddy_h2_new(int) voidptr
 fn C.vaddy_h2_free(voidptr)
-fn C.vaddy_h2_receive(voidptr, voidptr, int, i64) int
+fn C.vaddy_h2_receive(voidptr, voidptr, int) int
 fn C.vaddy_h2_flush(voidptr) int
 fn C.vaddy_h2_wire_len(voidptr) int
 fn C.vaddy_h2_wire(voidptr) voidptr

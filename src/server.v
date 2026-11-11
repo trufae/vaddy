@@ -24,6 +24,7 @@ mut:
 @[heap]
 struct Connection {
 mut:
+	file_output FileOutput
 	output EncodedOutput
 	wire_output Buffer
 	h2 voidptr
@@ -152,6 +153,7 @@ fn (mut s Server) close_backend(mut c Connection) {
 
 fn (mut s Server) close_client(mut c Connection) {
 	if c.fd < 0 { return }
+	c.close_file()
 	c.close_encoder()
 	if c.h2 != unsafe { nil } {
 		for id in c.h2_streams.keys() { s.close_h2_stream(mut c, id) }
@@ -183,6 +185,7 @@ fn (mut s Server) respond(mut c Connection, code int, reason string, body string
 }
 
 fn (mut s Server) respond_options(mut c Connection, code int, reason string, body string, extra string, keepalive bool, content_type string) {
+	c.close_file()
 	s.close_backend(mut c)
 	c.to_client.clear()
 	c.to_backend.clear()
@@ -331,13 +334,22 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		s.redirect_response(mut c, route)!
 		return false
 	}
+	c.header_values.upstream_hostport = route.upstream.trim_string_left('https://')
+	mut edits := site.request_headers.clone()
+	edits << route.request_headers
+	mut handler_fields := m.fields.clone()
+	apply_header_edits(mut handler_fields, edits.filter(!it.proxy), c.header_values, 0, false)!
 	encoding := if route.encode.enabled { route.encode } else { site.encode }
 	if encoding.enabled && header_edit_matches(encoding.filter, [], c.header_values, 0) {
 		c.output.config = encoding
-		c.output.name = accepted_encoding(m.fields, encoding.formats)
+		c.output.name = accepted_encoding(handler_fields, encoding.formats)
+	}
+	if route.files.enabled {
+		s.close_backend(mut c)
+		s.serve_file(mut c, site, route, handler_fields)!
+		return false
 	}
 	c.log_upstream = route.upstream
-	c.header_values.upstream_hostport = route.upstream.trim_string_left('https://')
 	generation := if c.runtime == unsafe { nil } { i64(0) } else { c.runtime.id }
 	if c.backend >= 0 && (c.backend_generation != generation || c.backend_name != route.backend_key() || C.vaddy_socket_alive(c.backend) == 0) {
 		s.close_backend(mut c)
@@ -361,16 +373,13 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		}
 		s.owners[c.backend] = c.fd
 	}
-	mut edits := site.request_headers.clone()
-	edits << route.request_headers
 	mut upstream_request := m
-	upstream_request.fields = m.fields.clone()
+	upstream_request.fields = handler_fields
 	if c.output.name != '' {
 		for mut field in upstream_request.fields {
 			if field.lower == 'if-none-match' { field = Field{...field, value: field.value.replace('-${c.output.name}"', '"')} }
 		}
 	}
-	apply_header_edits(mut upstream_request.fields, edits.filter(!it.proxy), c.header_values, 0, false)!
 	hosts := upstream_request.fields.filter(it.lower == 'host')
 	upstream_request.host = if hosts.len > 0 { hosts.last().value } else { '' }
 	upstream_request.fields = upstream_request.fields.filter(it.lower != 'host')
@@ -561,6 +570,9 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 	mut backend_readable := event_fd == c.backend || (c.backend_tls != unsafe { nil } && C.vaddy_tls_has_pending(c.backend_tls) != 0)
 	for _ in 0 .. 8 {
 		mut progress := false
+		file_remaining := c.response.frame.remaining
+		c.pump_file()!
+		if file_remaining != c.response.frame.remaining { progress = true }
 		before_output := c.to_client.len()
 		c.prepare_output()!
 		if before_output != c.to_client.len() { progress = true }

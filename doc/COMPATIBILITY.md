@@ -16,6 +16,7 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | HTTP | HTTP/2 over TLS with ALPN, concurrent streams and flow control; HTTP/1.1, HTTP/1.0 clients with connection close, keep-alive, sequential pipelining, HEAD, informational responses, length/chunked bodies, EOF-delimited responses |
 | Streaming | Bounded upload/download queues, backpressure, SSE, WebSocket upgrades |
 | Compression | `encode [path/@matcher] [zstd gzip]`, levels, `minimum_length`, status/header response matching, negotiation, cache headers and incremental streaming over HTTP/1 and HTTP/2 |
+| Static files | `root`, `file_server`, indexes, canonical redirects, basic HTML/JSON browsing, hidden files, GET/HEAD, single/multipart ranges, ETag/Last-Modified and conditional requests |
 | TLS | OpenSSL TLS 1.2+, automatic public/internal certificates, live context replacement |
 | Access logs | Named JSON/console logs, filters, custom fields, levels and path-based skipping; stderr/stdout/discard/files; file rotation, gzip and retention; Caddy-style metadata/body counts |
 | Reload | Transactional request-setting reloads through `vaddy reload` or POSIX SIGHUP; active requests keep their configuration; ports and certificate policies require restart |
@@ -149,8 +150,11 @@ tracking them here does not imply that removing those restrictions is desirable.
 
 ### Website serving and authentication
 
-- [ ] **CADDY-033 — Static files:** implement file serving, directory browsing,
-  range requests and cache validation.
+- [x] **CADDY-033 — Static files:** stream files under a configured root, with
+  indexes, basic directory browsing, ranges and cache validation. `make files`
+  compares common headers/bodies, canonical redirects, validators and ranges
+  against the pinned Caddy reference. Compression and HTTP/2 are integrated;
+  atomic replacement preserves in-flight file contents. See CADDY-059 for extras.
 - [x] **CADDY-034 — Compression:** streaming gzip and Zstandard for responses,
   with bounded queues and flow control. Negotiation, size thresholds,
   content types, HEAD, 206/304, existing encodings, no-transform, ETag variants and
@@ -195,7 +199,14 @@ tracking them here does not imply that removing those restrictions is desirable.
   account for compatibility with required Caddy modules. Community plugins are a
   separate, expanding scope rather than a finite built-in feature list.
 
-### Compatibility verification
+### Additional options for implemented features
+
+- [ ] **CADDY-057 — Additional HTTP/2 options:** cleartext HTTP/2 listeners (h2c),
+  extended CONNECT/WebSockets over HTTP/2, forwarding/editing HTTP/2 trailers,
+  and Caddy's protocol/server tuning options. Current limits are 64 concurrent
+  streams per connection, the configured maximum request count, 16 KiB headers,
+  and a global active-stream limit equal to `--max-connections`. HTTP/2 backends
+  and gRPC remain CADDY-018. The wire engine adds a libnghttp2 dependency.
 
 - [ ] **CADDY-058 — Remaining compression options:** exact codec output/level
   mapping (Vaddy uses zlib/libzstd), stateless gzip level, nested Zstandard options,
@@ -204,12 +215,16 @@ tracking them here does not imply that removing those restrictions is desirable.
   and buffers small unknown-length bodies up to that threshold. Compressed HTTP/1
   responses use chunked framing; Caddy may choose Content-Length for short output.
 
-- [ ] **CADDY-057 — Additional HTTP/2 options:** cleartext HTTP/2 listeners (h2c),
-  extended CONNECT/WebSockets over HTTP/2, forwarding/editing HTTP/2 trailers,
-  and Caddy's protocol/server tuning options. Current limits are 64 concurrent
-  streams per connection, the configured maximum request count, 16 KiB headers,
-  and a global active-stream limit equal to `--max-connections`. HTTP/2 backends
-  and gRPC remain CADDY-018. The wire engine adds a libnghttp2 dependency.
+- [ ] **CADDY-059 — Remaining file-server options:** precompressed sidecars,
+  custom browse templates, sorting/pagination/filtering and full browse metadata,
+  directory cache validation, filesystem modules, pass_thru/status overrides,
+  ETag sidecars, complete hide-pattern semantics, uncommon MIME mappings and
+  legacy/exceptional timestamp handling. Error pages and some error/conditional
+  headers differ. Listings have bounded generated output; file ranges are capped
+  at 16. Cross-platform file paths reject backslashes, colons and control bytes.
+  Like Caddy, a document root is not a filesystem sandbox: symlinks are followed.
+
+### Compatibility verification
 
 - [ ] **CADDY-050 — Differential test coverage:** run identical configurations
   and requests against Vaddy and Caddy, comparing accepted syntax, routing,

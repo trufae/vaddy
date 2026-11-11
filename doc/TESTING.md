@@ -149,3 +149,17 @@ Tests decode gzip and Zstandard independently (Python gzip and the libzstd
 decoder), compare representations/cache headers, and cover negotiation, size
 thresholds, request/response matching, incompressible data, HEAD, chunked bodies
 and incremental SSE. The HTTP/2 suite also transfers compressed responses.
+
+## Static file tests
+
+```sh
+make files
+make files FILES_REFERENCE=./caddy-bench
+```
+
+Covers files/indexes, extension-based MIME, HEAD, canonical URLs, hidden files,
+traversal attempts, HTML escaping/JSON browsing, single/multipart ranges,
+conditional requests, gzip variants, keep-alive, and atomic file replacement
+(Unix). Non-regular files are rejected. HTTP/2 tests also exercise file downloads,
+compression, HEAD and flow-controlled streams. V unit tests cover range overflow
+and malformed paths. Native Windows/Linux/Alpine runs remain delegated to CI.

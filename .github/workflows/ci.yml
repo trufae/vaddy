@@ -76,6 +76,7 @@ jobs:
           .tools/http2-tests/bin/pip install -r tests/requirements.txt
           make http2 V="$PWD/.tools/v/v" PYTHON=.tools/http2-tests/bin/python
           make encode V="$PWD/.tools/v/v"
+          make files V="$PWD/.tools/v/v"
 
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
@@ -88,6 +89,7 @@ jobs:
           python3 -m pip install --break-system-packages -r tests/requirements.txt
           make http2 V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
           make encode V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
+          make files V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
 
   alpine:
     name: Alpine Linux x86-64

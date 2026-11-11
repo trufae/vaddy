@@ -15,6 +15,8 @@ struct Token {
 
 struct Route {
 mut:
+	files FileConfig
+	root string
 	encode EncodeConfig
 	log_rules []LogRule
 	patterns []string
@@ -34,6 +36,7 @@ mut:
 
 struct Site {
 mut:
+	root string = '.'
 	encode EncodeConfig
 	logs []LogConfig
 	log_rules []LogRule
@@ -221,10 +224,18 @@ fn parse_route(d Directive) !Route {
 		}
 	}
 	for child in d.children {
-		if child.args.len == 0 || (child.children.len > 0 && child.args[0] !in ['reverse_proxy', 'header', 'request_header', 'encode']) {
+		if child.args.len == 0 || (child.children.len > 0 && child.args[0] !in ['reverse_proxy', 'header', 'request_header', 'encode', 'file_server']) {
 			return error('line ${child.line}: unsupported nested directive')
 		}
 		match child.args[0] {
+			'root' { route.root = parse_root(child)! }
+			'file_server' {
+				if route.files.enabled { return error('duplicate file_server') }
+				files := parse_file_server(child)!
+				if files.patterns.len > 0 || files.matcher != '' { return error('put file_server matcher on handle') }
+				route.files = files.files
+				if files.root != '' { route.root = files.root }
+			}
 			'encode' {
 				if route.encode.enabled { return error('duplicate encode directive') }
 				route.encode = parse_encode(child)!
@@ -258,7 +269,7 @@ fn parse_route(d Directive) !Route {
 			}
 		}
 	}
-	if (route.upstream == '') == (route.redirect == '') { return error('handle needs exactly one reverse_proxy or redir') }
+	if int(route.upstream != '') + int(route.redirect != '') + int(route.files.enabled) != 1 { return error('handle needs exactly one reverse_proxy, redir or file_server') }
 	if route.redirect != '' && route.rewrite != '' { return error('rewrite and redir cannot share a handle') }
 	return route
 }
@@ -330,6 +341,8 @@ fn parse_config(input string) !Config {
 				continue
 			}
 			match name {
+				'root' { site.root = parse_root(child)! }
+				'file_server' { site.routes << parse_file_server(child)! }
 				'encode' {
 					if site.encode.enabled { return error('duplicate encode directive') }
 					site.encode = parse_encode(child)!
@@ -370,7 +383,7 @@ fn parse_config(input string) !Config {
 				else { return error('line ${child.line}: unsupported directive ${name}') }
 			}
 		}
-		if site.routes.len == 0 { return error('site needs reverse_proxy, handle or redir') }
+		if site.routes.len == 0 { return error('site needs reverse_proxy, file_server, handle or redir') }
 		resolve_log_rules(mut site.log_rules, site.matchers)!
 		resolve_encode(mut site.encode, site.matchers)!
 		resolve_header_matchers(mut site.response_headers, site.matchers)!

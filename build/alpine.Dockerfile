@@ -24,6 +24,7 @@ RUN test "$(uname -m)" = x86_64 \
     && /tmp/http2-tests/bin/pip install -r tests/requirements.txt \
     && make http2 PYTHON=/tmp/http2-tests/bin/python \
     && make encode \
+    && make files \
     && mkdir /out \
     && cp vaddy /out/vaddy-alpine-x86_64
 

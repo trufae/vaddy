@@ -122,7 +122,7 @@ fn (mut c Connection) close_encoder() {
 }
 
 fn (c &Connection) has_output_work() bool {
-	return c.wire_output.len() > 0 || c.output.flush_pending || (c.to_client.len() > 0 && (!c.output.config.enabled || c.output.decided || c.tunnel))
+	return c.file_output.active || c.wire_output.len() > 0 || c.output.flush_pending || (c.to_client.len() > 0 && (!c.output.config.enabled || c.output.decided || c.tunnel))
 }
 
 fn (mut c Connection) prepare_output() ! {

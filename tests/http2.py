@@ -162,6 +162,8 @@ def server(binary, engine, backend):
                         '-out', str(root / 'cert.pem')], check=True, capture_output=True)
         port, plain = free_port(), free_port()
         config = root / 'Caddyfile'
+        (root / 'public' / 'files').mkdir(parents=True)
+        (root / 'public' / 'files' / 'large.txt').write_bytes(RANDOM * 4)
         config.write_text(f'''{{
  admin off
  http_port {plain}
@@ -175,6 +177,10 @@ localhost {{
   output file "{root / 'access.jsonl'}"
  }}
  redir /redirect /target 308
+ handle /files/* {{
+  root * "{root / 'public'}"
+  file_server
+ }}
  reverse_proxy 127.0.0.1:{backend.server_port}
 }}
 ''')
@@ -229,6 +235,10 @@ def run(binary, engine):
                 assert dict(client.headers[compressed])['content-encoding'] == 'gzip'
                 compressed = client.request('/random', headers=[('accept-encoding', 'gzip')])
                 assert gzip.decompress(client.result(compressed)) == RANDOM
+                assert client.result(client.request('/files/large.txt')) == RANDOM * 4
+                compressed = client.request('/files/large.txt', headers=[('accept-encoding', 'gzip')])
+                assert gzip.decompress(client.result(compressed)) == RANDOM * 4
+                assert client.result(client.request('/files/large.txt', 'HEAD')) == b''
                 assert client.result(client.request('/chunked')) == b'onetwo'
                 assert client.result(client.request('/head', 'HEAD')) == b''
                 sid = client.request('/cookies')
@@ -275,7 +285,7 @@ def run(binary, engine):
             # A blocked stream must not consume another stream's window.
             client = Client(port, root / 'cert.pem', 1024)
             try:
-                blocked = client.request('/large')
+                blocked = client.request('/files/large.txt')
                 fast = client.request('/fast')
                 while fast not in client.ended:
                     client.receive(acknowledge=False)
@@ -283,6 +293,12 @@ def run(binary, engine):
                 assert len(client.bodies.get(blocked, b'')) <= 1024
                 client.h2.reset_stream(blocked)
                 client.flush()
+            finally:
+                client.sock.close()
+            # Small windows legitimately generate many WINDOW_UPDATE frames.
+            client = Client(port, root / 'cert.pem', 1024)
+            try:
+                assert client.result(client.request('/files/large.txt')) == RANDOM * 4
             finally:
                 client.sock.close()
             # HTTP/1 ALPN and clients without ALPN continue to work.

@@ -359,3 +359,40 @@ Inside an `encode` block, use `minimum_length` (0..16384, with 0 selecting the
 default), `gzip [level]`, `zstd [fastest|default|better|best]`, or a `match` block
 with response `status`/`header` conditions. Formats can be selected on the first
 line or in the block. A path or named path matcher can follow `encode`.
+
+## Static websites
+
+```caddyfile
+example.org {
+    root * /srv/www/public
+    encode zstd gzip
+    file_server
+}
+```
+
+Files stream through bounded queues, including over HTTP/2. GET and HEAD support
+ETag/Last-Modified validation and single or multipart byte ranges. `index.html`
+and `index.txt` are the default indexes. Directories redirect to a trailing slash;
+regular files redirect away from one. Unknown extensions are not content-sniffed.
+
+Use `file_server browse` for a basic HTML listing, or request `Accept:
+application/json` for JSON. A `file_server` block accepts `browse`, `root`,
+`index name...`, `hide pattern...` and `disable_canonical_uris`. Browsing limits
+generated output to 24,000 bytes and at most 512 entries, returning 503 when exceeded.
+The loaded Caddyfile is hidden automatically. Roots and hide paths are relative
+to the server working directory. Symlinks are followed, as in Caddy.
+
+Combine a site root and file fallback with API handles:
+
+```caddyfile
+example.org {
+    root * /srv/www/public
+    handle /api/* {
+        reverse_proxy localhost:8001
+    }
+    file_server
+}
+```
+
+`root`, `encode`, `rewrite * /target` and `file_server` also work inside a handle.
+See the compatibility checklist for remaining advanced file-server options.

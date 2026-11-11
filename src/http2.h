@@ -22,8 +22,6 @@ struct vaddy_h2 {
     nghttp2_session *session;
     struct vaddy_h2_stream *streams;
     int stream_count, requests, max_requests, draining, wire_len;
-    int controls;
-    int64_t control_epoch;
     unsigned char wire[VADDY_H2_WIRE];
 };
 
@@ -69,8 +67,7 @@ static int vaddy_h2_header(nghttp2_session *session, const nghttp2_frame *frame,
     return 0;
 }
 static int vaddy_h2_frame_recv(nghttp2_session *session, const nghttp2_frame *frame, void *user) {
-    struct vaddy_h2 *h = user;
-    if (frame->hd.type != NGHTTP2_DATA && ++h->controls > 1000) return NGHTTP2_ERR_CALLBACK_FAILURE;
+    (void)user;
     struct vaddy_h2_stream *s = nghttp2_session_get_stream_user_data(session, frame->hd.stream_id);
     if (s) {
         if (frame->hd.type == NGHTTP2_HEADERS && frame->headers.cat == NGHTTP2_HCAT_REQUEST) s->ready = 1;
@@ -168,9 +165,8 @@ static void vaddy_h2_free(void *pointer) {
     }
     free(h);
 }
-static int vaddy_h2_receive(void *pointer, const void *data, int length, int64_t now) {
+static int vaddy_h2_receive(void *pointer, const void *data, int length) {
     struct vaddy_h2 *h = pointer;
-    if (now - h->control_epoch >= 1000) { h->controls = 0; h->control_epoch = now; }
     ssize_t n = nghttp2_session_mem_recv(h->session, data, (size_t)length);
     return n < 0 ? -1 : (int)n;
 }

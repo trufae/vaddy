@@ -17,6 +17,9 @@ unsupported directives fail validation.
 | Backends | HTTP and verified HTTPS, custom CA roots and TLS server names |
 | Operations | JSON access logs and transactional configuration reloads |
 | Streaming | Bounded buffers, backpressure, SSE and WebSocket upgrades |
+| HTTP/2 | Automatic TLS negotiation, concurrent streams and flow control |
+| Compression | Streaming gzip and Zstandard, negotiation and cache headers |
+| Static websites | Document roots, indexes, directory listings, byte ranges and cache validation |
 | Concurrency | epoll/kqueue/Windows polling, optional workers and a global connection limit |
 | Certificates | Public ACME, a local development CA, manual certificates and live reload |
 
@@ -73,8 +76,8 @@ target. See [build instructions](doc/BUILDING.md) for toolchains and dependencie
 The server runs natively in V with small OS/OpenSSL adapters. Go is used only
 by the comparison tools and the Caddy reference build; Rust/Cargo builds the
 Raddy reference. See [benchmark setup](doc/TESTING.md) for both checkouts.
-HTTP/2, HTTP/3 and Caddy's
-full module ecosystem are outside the current scope; see
+HTTP/3, HTTP/2 backends and Caddy's
+full module ecosystem remain unsupported; see
 [compatibility](doc/COMPATIBILITY.md).
 
 Implementation details, reproducible benchmarks and optimization findings live

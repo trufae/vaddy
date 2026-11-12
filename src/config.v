@@ -1,5 +1,6 @@
 module main
 
+import net
 import net.urllib
 
 struct Directive {
@@ -26,6 +27,7 @@ mut:
 	redirect_status string
 	redirect_html bool
 	redirect_first bool
+	respond  string
 	rewrite  string
 	upstream string
 	tls_server_name string
@@ -224,7 +226,7 @@ fn parse_route(d Directive) !Route {
 		}
 	}
 	for child in d.children {
-		if child.args.len == 0 || (child.children.len > 0 && child.args[0] !in ['reverse_proxy', 'header', 'request_header', 'encode', 'file_server']) {
+		if child.args.len == 0 || (child.children.len > 0 && child.args[0] !in ['reverse_proxy', 'header', 'request_header', 'encode', 'file_server', 'respond']) {
 			return error('line ${child.line}: unsupported nested directive')
 		}
 		match child.args[0] {
@@ -263,6 +265,9 @@ fn parse_route(d Directive) !Route {
 			}
 			'reverse_proxy' {
 				parse_proxy(child, mut route)!
+			}
+			'respond' {
+				route.respond = child.args[2]
 			}
 			else {
 				return error('line ${child.line}: unsupported handle directive ${child.args[0]}')
@@ -459,8 +464,8 @@ fn (cfg Config) domains() []string {
 }
 
 fn (cfg Config) site_index(host string) int {
-	name := host.all_before(':').trim_right('.').to_lower()
-	for i, site in cfg.sites { if name in site.hosts { return i } }
+	name, _ := net.split_address(host) or {return -2}
+	for i, site in cfg.sites { if name in site.hosts || site.hosts.contains('*') { return i } }
 	return -1
 }
 

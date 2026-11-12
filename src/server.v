@@ -4,21 +4,24 @@ import os
 import x.json2
 import time
 import sync.stdatomic
+import net
 
 struct Options {
 mut:
 	acme_transport         AcmeTransport = acme_http
-	config                 string        = 'Caddyfile'
-	data                   string
-	bind                   string = '::'
-	max_connections        int    = 512
-	workers                int    = 1
-	max_keepalive_requests int    = 1000
-	idle_timeout           int    = 60
-	header_timeout         int    = 15
-	http_port              int
-	https_port             int
-	staging                bool
+	config                 string @[xdoc: 'Config file path']
+	data                   string @[xdoc: 'Certificate/account storage (default: XDG data/vaddy)']
+	bind                   string = '::' @[xdoc: 'Listen address (default: ::, dual IPv4/IPv6)']
+	max_connections        int    = 512 @[xdoc: 'Bound active clients (default: 512)']
+	workers                int    = 1 @[xdoc: 'Event-loop workers, 1..64 (default: 1)']
+	max_keepalive_requests int    = 1000 @[xdoc: 'Maximum number of keepalive requests to process']
+	idle_timeout           int    = 60 @[xdoc: 'Inactive connection timeout (default: 60)']
+	header_timeout         int    = 15 @[xdoc: 'Header/handshake timeout (default: 15)']
+	http_port              int @[xdoc: 'Override HTTP port (default: 80)']
+	https_port             int @[xdoc: 'Override HTTPS port (default: 443)']
+	staging                bool @[xdoc: 'Use Let\'s Encrypt staging CA and separate storage']
+	help                   bool @[xdoc: 'Show this help']
+	version                bool @[xdoc: 'Show version']
 }
 
 @[heap]
@@ -288,7 +291,8 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	}
 	site := cfg.sites[c.site]
 	c.response_headers = site.response_headers.clone()
-	c.header_values = HeaderValues{uri: m.uri, method: m.method, fields: m.fields.clone(), host: m.host.all_before(':'), hostport: m.host, scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip, remote_port: c.remote_port}
+	addr_host, addr_port := net.split_address(m.host)!
+	c.header_values = HeaderValues{uri: m.uri, method: m.method, fields: m.fields.clone(), host: addr_host, hostport: addr_port.str(), scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip, remote_port: c.remote_port}
 	c.log_early = map[string]json2.Any{}
 	c.log_rules = site.log_rules.clone()
 	c.capture_early_logs(site.log_rules)
@@ -313,9 +317,8 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 			return false
 		}
 		if !site.plain {
-			port := if cfg.https_port == 443 { '' } else { ':${cfg.https_port}' }
-			host := m.host.all_before(':').to_lower().trim_right('.')
-			s.respond(mut c, 308, 'Permanent Redirect', '', 'Location: https://${host}${port}${m.uri}\r\n')
+			https_port := if cfg.https_port == 443 { '' } else { ':${cfg.https_port}' }
+			s.respond(mut c, 308, 'Permanent Redirect', '', 'Location: https://${addr_host}${https_port}${m.uri}\r\n')
 			return false
 		}
 	} else if site.plain {
@@ -324,6 +327,11 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	}
 	route := site.route_for(m.uri) or {
 		s.respond(mut c, 404, 'Not Found', 'Not Found\n', '')
+		return false
+	}
+	if route.respond != '' {
+		body := expand_placeholders(route.respond, c.header_values)!
+		s.respond_options(mut c, 200, 'OK', body, '', true, 'text/plain; charset=utf-8')
 		return false
 	}
 	c.capture_early_logs(route.log_rules)

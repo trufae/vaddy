@@ -26,6 +26,16 @@ mut:
 	current &Runtime = unsafe { nil }
 }
 
+fn new_config(opts Options) !Config {
+	mut cfg := Config{}
+	if opts.http_port > 0 { cfg.http_port = opts.http_port }
+	if opts.https_port > 0 { cfg.https_port = opts.https_port }
+	if cfg.http_port == cfg.https_port { return error('HTTP and HTTPS ports must differ') }
+	if opts.staging { cfg.acme_ca = 'https://acme-staging-v02.api.letsencrypt.org/directory' }
+	acme_url(cfg.acme_ca)!
+	return cfg
+}
+
 fn load_config(input string, opts Options) !Config {
 	mut cfg := parse_config(input)!
 	if opts.http_port > 0 { cfg.http_port = opts.http_port }

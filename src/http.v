@@ -2,6 +2,7 @@ module main
 
 import strconv
 import strings
+import net
 
 const header_limit = 16384
 const buffer_limit = 32768
@@ -164,11 +165,9 @@ fn parse_message_reuse(raw string, request bool, head bool, fields []Field) !Mes
 				host_seen = true
 				m.host = value
 				if request {
-					host_name := value.all_before(':')
-					if !valid_host(host_name.trim_right('.')) {
-						return error('invalid host name')
+					net.split_address(value) or {
+						return error('invalid host name: ${value}')
 					}
-					if host_name.len != value.len { port_value(value[host_name.len + 1..])! }
 				}
 			}
 			'connection' {

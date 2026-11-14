@@ -24,10 +24,9 @@ On POSIX, SIGHUP reloads the active config file.
 SIGTERM/SIGINT stop accepts and drain active requests for up to 10 seconds."
 
 fn cli() ! {
-	// Parse flags
-	mut opts, other_args := flag.to_struct[Options](os.args, skip: 1)!
-
-	// Help/Version display
+	stop := os.args.index('--')
+	separator := if stop < 0 { os.args.len } else { stop }
+	mut opts, mut args := flag.to_struct[Options](os.args[..separator], skip: 1)!
 	if opts.help {
 		print_help()
 		return
@@ -37,67 +36,59 @@ fn cli() ! {
 		return
 	}
 
-	// Setup data
+	for arg in args {
+		if arg.starts_with('-') { return error('unknown option ${arg}') }
+	}
+	if separator < os.args.len { args << os.args[separator + 1..] }
+	command := args[0] or { 'run' }
+	if command !in options { return error('unknown command ${command}. See --help') }
+	if command == 'respond' {
+		if args.len != 2 { return error('usage: vaddy respond BODY') }
+	} else if args.len > 1 {
+		return error('unexpected argument ${args[1]}')
+	}
+	if command == 'version' {
+		println('vaddy ${vaddy_version}')
+		return
+	}
+	if opts.adapter != 'caddyfile' { return error('only the caddyfile adapter is supported') }
+	if opts.workers !in 1 .. 65 { return error('--workers must be between 1 and 64') }
+	for name, value in {
+		'max-connections': opts.max_connections
+		'idle-timeout': opts.idle_timeout
+		'header-timeout': opts.header_timeout
+	} {
+		if value !in 1 .. 65536 { return error('invalid --${name}: ${value}') }
+	}
+	if opts.max_keepalive_requests < 1 { return error('--max-keepalive-requests must be positive') }
+	if opts.http_port != '' { port_value(opts.http_port)! }
+	if opts.https_port != '' { port_value(opts.https_port)! }
+	if opts.config == '' && command in ['run', 'validate', 'reload'] { opts.config = 'Caddyfile' }
+
 	if opts.data == '' {
-		base := os.getenv_opt('XDG_DATA_HOME') or {
-			os.join_path(os.home_dir(), '.local', 'share')
-		}
-		opts.data = os.join_path(base, 'vaddy')
+		base := os.getenv('XDG_DATA_HOME')
+		opts.data = os.join_path(if base == '' { os.join_path(os.home_dir(), '.local', 'share') } else { base }, 'vaddy')
 	}
 	if opts.staging { opts.data = os.join_path(opts.data, 'staging') }
 	opts.data = os.abs_path(opts.data)
 
-	cfg := match other_args[0] or {
-		print_help()
-		return
-	} {
-		'version' {
-			println('vaddy ${vaddy_version}')
-			return
-		}
-		'run' {
-			if !os.exists(opts.config) {
-				return error('config file doesn\'t exist: "${opts.config}"')
+	config := match command {
+		'run', 'validate' {
+			loaded := load_config(os.read_file(opts.config)!, opts)!
+			if command == 'validate' {
+				println('Valid configuration: ${loaded.sites.len} site(s), HTTP ${loaded.http_port}, HTTPS ${loaded.https_port}')
+				return
 			}
-			if opts.config == '' {
-				return error('run requires a config file, e.g. vaddy run --config ./Caddyfile')
-			}
-			config_text := os.read_file(opts.config) or {
-				return error('error reading config file: ${err.msg()}')
-			}
-			load_config(config_text, opts)!
-		}
-		'validate' {
-			if !os.exists(opts.config) {
-				return error('config file doesn\'t exist: "${opts.config}"')
-			}
-			if opts.config == '' {
-				return error('validate requires a config file, e.g. vaddy validate --config ./Caddyfile')
-			}
-			config_text := os.read_file(opts.config) or {
-				return error('error reading config file: ${err.msg()}')
-			}
-			cfg := load_config(config_text, opts)!
-			println('Valid configuration: ${cfg.sites.len} site(s), HTTP ${cfg.http_port}, HTTPS ${cfg.https_port}')
-			return
+			loaded
 		}
 		'respond' {
 			mut cfg := new_config(opts)!
-			cfg.sites << Site{
-				plain: true
-				hosts: ['*']
-				routes: [Route{
-					patterns: ['*']
-					respond: other_args[1] or {
-						return error('please provide text to respond with')
-					}
-					upstream: '${opts.bind}:${opts.http_port}'
-				}]
-				root: '/'
-			}
+			cfg.sites << Site{plain: true, hosts: ['*'], routes: [Route{respond: args[1]}]}
 			cfg
 		}
 		'file-server' {
+			root := os.getwd()
+			if data_inside_root(opts.data, root) { return error('--data must be outside the file-server root') }
 			mut cfg := new_config(opts)!
 			cfg.sites << Site{
 				plain: true
@@ -107,7 +98,7 @@ fn cli() ! {
 						enabled: true
 						browse: true
 					}
-					root: os.getwd()
+					root: root
 				}]
 			}
 			cfg
@@ -116,14 +107,14 @@ fn cli() ! {
 			request_reload(opts)!
 			return
 		}
-		else {
-			print_help()
-			return
-		}
+		else { return error('unknown command ${command}') }
 	}
 
 	C.vaddy_private_files()
 	os.mkdir_all(opts.data, mode: 0o700)!
+	if command == 'file-server' && data_inside_root(os.real_path(opts.data), os.real_path(os.getwd())) {
+		return error('--data must be outside the file-server root')
+	}
 	os.chmod(opts.data, 0o700)!
 	os.mkdir_all(os.join_path(opts.data, 'challenges'), mode: 0o700)!
 	lock_fd := C.vaddy_lock(&char(os.join_path(opts.data, 'lock').str))
@@ -131,11 +122,20 @@ fn cli() ! {
 		return error('data directory is locked by another vaddy process: ${opts.data}')
 	}
 	defer { C.vaddy_unlock(lock_fd) }
-	if site := cfg.tls_site() {
+	if site := config.tls_site() {
 		if site.tls_mode != 'manual' { openssl_executable()! }
 	}
 	C.vaddy_signals()
-	run_server(cfg, opts)!
+	run_server(config, opts)!
+}
+
+fn data_inside_root(data string, root string) bool {
+	$if windows { return path_within(data.to_lower(), root.to_lower()) }
+	return path_within(data, root)
+}
+
+fn path_within(path string, root string) bool {
+	return path == root || path.starts_with(root.trim_right(os.path_separator) + os.path_separator)
 }
 
 fn print_help() {

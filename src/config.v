@@ -1,6 +1,5 @@
 module main
 
-import net
 import net.urllib
 
 struct Directive {
@@ -27,7 +26,7 @@ mut:
 	redirect_status string
 	redirect_html bool
 	redirect_first bool
-	respond  string
+	respond  ?string
 	rewrite  string
 	upstream string
 	tls_server_name string
@@ -212,6 +211,20 @@ fn parse_proxy(d Directive, mut route Route) ! {
 	}
 }
 
+fn parse_respond(d Directive) !Route {
+	if d.children.len > 0 || d.args.len !in [2, 3] {
+		return error('line ${d.line}: expected respond [matcher] body')
+	}
+	mut route := Route{respond: d.args.last()}
+	if d.args.len == 3 {
+		matcher := d.args[1]
+		if matcher.starts_with('@') { route.matcher = matcher }
+		else if matcher.starts_with('/') { route.patterns = [matcher] }
+		else if matcher != '*' { return error('line ${d.line}: invalid respond matcher') }
+	}
+	return route
+}
+
 fn parse_route(d Directive) !Route {
 	mut route := Route{}
 	if d.args.len > 2 { return error('line ${d.line}: handle accepts one matcher') }
@@ -226,7 +239,7 @@ fn parse_route(d Directive) !Route {
 		}
 	}
 	for child in d.children {
-		if child.args.len == 0 || (child.children.len > 0 && child.args[0] !in ['reverse_proxy', 'header', 'request_header', 'encode', 'file_server', 'respond']) {
+		if child.args.len == 0 || (child.children.len > 0 && child.args[0] !in ['reverse_proxy', 'header', 'request_header', 'encode', 'file_server']) {
 			return error('line ${child.line}: unsupported nested directive')
 		}
 		match child.args[0] {
@@ -267,14 +280,17 @@ fn parse_route(d Directive) !Route {
 				parse_proxy(child, mut route)!
 			}
 			'respond' {
-				route.respond = child.args[2]
+				if route.respond != none { return error('duplicate respond') }
+				response := parse_respond(child)!
+				if response.matcher != '' || response.patterns.len > 0 { return error('put respond matcher on handle') }
+				route.respond = response.respond
 			}
 			else {
 				return error('line ${child.line}: unsupported handle directive ${child.args[0]}')
 			}
 		}
 	}
-	if int(route.upstream != '') + int(route.redirect != '') + int(route.files.enabled) != 1 { return error('handle needs exactly one reverse_proxy, redir or file_server') }
+	if int(route.upstream != '') + int(route.redirect != '') + int(route.files.enabled) + int(route.respond != none) != 1 { return error('handle needs exactly one reverse_proxy, redir, file_server or respond') }
 	if route.redirect != '' && route.rewrite != '' { return error('rewrite and redir cannot share a handle') }
 	return route
 }
@@ -348,6 +364,7 @@ fn parse_config(input string) !Config {
 			match name {
 				'root' { site.root = parse_root(child)! }
 				'file_server' { site.routes << parse_file_server(child)! }
+				'respond' { site.routes << parse_respond(child)! }
 				'encode' {
 					if site.encode.enabled { return error('duplicate encode directive') }
 					site.encode = parse_encode(child)!
@@ -388,7 +405,7 @@ fn parse_config(input string) !Config {
 				else { return error('line ${child.line}: unsupported directive ${name}') }
 			}
 		}
-		if site.routes.len == 0 { return error('site needs reverse_proxy, file_server, handle or redir') }
+		if site.routes.len == 0 { return error('site needs reverse_proxy, file_server, handle, redir or respond') }
 		resolve_log_rules(mut site.log_rules, site.matchers)!
 		resolve_encode(mut site.encode, site.matchers)!
 		resolve_header_matchers(mut site.response_headers, site.matchers)!
@@ -463,8 +480,7 @@ fn (cfg Config) domains() []string {
 	return result
 }
 
-fn (cfg Config) site_index(host string) int {
-	name, _ := net.split_address(host) or {return -2}
+fn (cfg Config) site_index(name string) int {
 	for i, site in cfg.sites { if name in site.hosts || site.hosts.contains('*') { return i } }
 	return -1
 }

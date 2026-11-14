@@ -569,3 +569,25 @@ fn test_redirect_body_drain_pipeline_and_dynamic_codes() ! {
 	h.pump()!
 	assert receive(h.client).starts_with('HTTP/1.1 500')
 }
+
+fn test_respond_with_normalized_or_ipv6_host() ! {
+	for host, expected_port in {'LOCALHOST.': '', 'localhost:80': '80', '[::1]:8080': '8080'} {
+		mut h := harness()!
+		h.s.cfg = parse_config('http://localhost {\n handle {\n header X-Hostport {hostport}\n header X-Port {port}\n respond ""\n }\n}')!
+		if host.starts_with('[') { h.s.cfg.sites[0].hosts = ['*'] }
+		send_text(h.client, 'GET / HTTP/1.1\r\nHost: ${host}\r\n\r\n')
+		h.pump()!
+		response := receive(h.client)
+		assert response.starts_with('HTTP/1.1 200')
+		assert response.contains('X-Hostport: ${host}\r\n')
+		assert response.contains('X-Port: ${expected_port}\r\n')
+		assert response.contains('Content-Length: 0\r\n')
+		h.close()
+	}
+
+	mut h := harness()!
+	defer { h.close() }
+	send_text(h.client, 'GET / HTTP/1.1\r\nHost: localhost:abc\r\n\r\n')
+	h.pump()!
+	assert receive(h.client).starts_with('HTTP/1.1 400')
+}

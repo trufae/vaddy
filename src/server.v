@@ -7,94 +7,97 @@ import sync.stdatomic
 
 struct Options {
 mut:
-	acme_transport         AcmeTransport = acme_http
-	config                 string        = 'Caddyfile'
-	data                   string
-	bind                   string = '::'
-	max_connections        int    = 512
-	workers                int    = 1
-	max_keepalive_requests int    = 1000
-	idle_timeout           int    = 60
-	header_timeout         int    = 15
-	http_port              int
-	https_port             int
-	staging                bool
+	acme_transport         AcmeTransport = acme_http @[ignore]
+	config                 string                    @[xdoc: 'Config file path']
+	data                   string                    @[xdoc: 'Certificate/account storage (default: XDG data/vaddy)']
+	bind                   string = '::'             @[xdoc: 'Listen address (default: ::, dual IPv4/IPv6)']
+	max_connections        int    = 512              @[xdoc: 'Bound active clients (default: 512)']
+	workers                int    = 1                @[xdoc: 'Event-loop workers, 1..64 (default: 1)']
+	max_keepalive_requests int    = 1000             @[xdoc: 'Maximum number of keepalive requests to process']
+	idle_timeout           int    = 60               @[xdoc: 'Inactive connection timeout (default: 60)']
+	header_timeout         int    = 15               @[xdoc: 'Header/handshake timeout (default: 15)']
+	http_port              string                    @[xdoc: 'Override HTTP port (default: 80)']
+	https_port             string                    @[xdoc: 'Override HTTPS port (default: 443)']
+	staging                bool                      @[xdoc: 'Use Let\'s Encrypt staging CA and separate storage']
+	adapter                string = 'caddyfile'      @[xdoc: 'Config adapter (caddyfile)']
+	help                   bool                      @[short: h; xdoc: 'Show this help']
+	version                bool                      @[short: v; xdoc: 'Show version']
 }
 
 @[heap]
 struct Connection {
 mut:
-	file_output FileOutput
-	output EncodedOutput
-	wire_output Buffer
-	h2 voidptr
-	h2_streams map[int]&Connection
-	h2_id int
-	h2_parent voidptr
-	h2_state &C.vaddy_h2_stream = unsafe { nil }
-	h2_chunked_input bool
-	h2_input_end bool
-	h2_headers_sent bool
-	h2_output_end bool
-	h2_output_frame Framing
-	runtime &Runtime = unsafe { nil }
-	backend_generation i64
-	access_targets []AccessTarget
-	log_rules []LogRule
-	log_early map[string]json2.Any
-	access_logged bool
-	log_status int
-	log_started i64
-	log_upstream string
-	log_size i64
-	log_bytes_read i64
+	file_output            FileOutput
+	output                 EncodedOutput
+	wire_output            Buffer
+	h2                     voidptr
+	h2_streams             map[int]&Connection
+	h2_id                  int
+	h2_parent              voidptr
+	h2_state               &C.vaddy_h2_stream = unsafe { nil }
+	h2_chunked_input       bool
+	h2_input_end           bool
+	h2_headers_sent        bool
+	h2_output_end          bool
+	h2_output_frame        Framing
+	runtime                &Runtime = unsafe { nil }
+	backend_generation     i64
+	access_targets         []AccessTarget
+	log_rules              []LogRule
+	log_early              map[string]json2.Any
+	access_logged          bool
+	log_status             int
+	log_started            i64
+	log_upstream           string
+	log_size               i64
+	log_bytes_read         i64
 	log_empty_content_type bool
-	log_response_fields []Field
-	remote_port string
-	fd              int
-	counted         bool
-	backend         int = -1
-	backend_tls     voidptr
-	backend_handshake bool
+	log_response_fields    []Field
+	remote_port            string
+	fd                     int
+	counted                bool
+	backend                int = -1
+	backend_tls            voidptr
+	backend_handshake      bool
 	backend_handshake_want int = 2
-	backend_read_want int = 1
-	backend_write_want int = 2
-	backend_stop_write bool
-	backend_write_len int
-	backend_name    string
-	connecting      bool
-	ip              string
-	tls             voidptr
-	handshake       bool
-	handshake_want  int = 1
-	read_want       int = 1
-	write_want      int = 2
-	write_len       int
-	request_buffer  Buffer
-	response_buffer Buffer
-	to_backend      Buffer
-	to_client       Buffer
-	request         Message
-	response        Message
-	have_request    bool
-	have_response   bool
-	close_after     bool
-	tunnel          bool
-	dead            bool
-	local           bool
-	site            int = -1
-	response_headers []HeaderEdit
-	header_values HeaderValues
-	requests        int
-	last_activity   i64
-	started         i64
+	backend_read_want      int = 1
+	backend_write_want     int = 2
+	backend_stop_write     bool
+	backend_write_len      int
+	backend_name           string
+	connecting             bool
+	ip                     string
+	tls                    voidptr
+	handshake              bool
+	handshake_want         int = 1
+	read_want              int = 1
+	write_want             int = 2
+	write_len              int
+	request_buffer         Buffer
+	response_buffer        Buffer
+	to_backend             Buffer
+	to_client              Buffer
+	request                Message
+	response               Message
+	have_request           bool
+	have_response          bool
+	close_after            bool
+	tunnel                 bool
+	dead                   bool
+	local                  bool
+	site                   int = -1
+	response_headers       []HeaderEdit
+	header_values          HeaderValues
+	requests               int
+	last_activity          i64
+	started                i64
 }
 
 struct Server {
 mut:
 	runtime_store &RuntimeStore = unsafe { nil }
-	retired []&Runtime
-	run_id string
+	retired       []&Runtime
+	run_id        string
 	cfg           Config
 	opts          Options
 	queue         int
@@ -195,7 +198,11 @@ fn (mut s Server) respond_options(mut c Connection, code int, reason string, bod
 	c.close_after = !keepalive || c.request.close || s.draining || c.requests >= s.opts.max_keepalive_requests - 1 || c.request.expect || c.request.frame.kind == .chunked || c.request.frame.remaining > 262144
 	connection := if c.close_after { 'Connection: close\r\n' } else { '' }
 	content := if content_type == '' { '' } else { 'Content-Type: ${content_type}\r\n' }
-	length := if code in [204, 304] || (keepalive && c.request.method == 'HEAD' && body == '') { '' } else { 'Content-Length: ${body.len}\r\n' }
+	length := if code in [204, 304] || (keepalive && c.request.method == 'HEAD' && body == '') {
+		''
+	} else {
+		'Content-Length: ${body.len}\r\n'
+	}
 	if code in [204, 304] { response_body = '' }
 	header.write_string('HTTP/1.1 ${code} ${reason}\r\n${length}${content}${connection}${extra}\r\n')
 	response_header_buffer(mut header, c.response_headers, c.header_values, code, true) or {
@@ -207,13 +214,18 @@ fn (mut s Server) respond_options(mut c Connection, code int, reason string, bod
 		header.write_string('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
 	}
 	c.log_empty_content_type = keepalive && content_type == ''
-	if c.access_targets.len > 0 { c.log_response_fields = buffer_header_fields(header).filter(it.lower !in ['content-length', 'connection']) }
+	if c.access_targets.len > 0 {
+		c.log_response_fields = buffer_header_fields(header).filter(it.lower !in [
+			'content-length',
+			'connection',
+		])
+	}
 	c.log_size = response_body.len
 	c.to_client.add(header.bytes())
 	if c.request.method != 'HEAD' { c.to_client.add(response_body.bytes()) }
 	c.local = true
 	c.have_response = true
-	c.response = Message{frame: Framing{done: true}}
+	c.response = Message{ frame: Framing{ done: true } }
 }
 
 fn (mut s Server) accept_clients(listener int, tls bool) {
@@ -281,14 +293,19 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	cfg := if c.runtime == unsafe { nil } { s.cfg } else { c.runtime.cfg }
 	backends := if c.runtime == unsafe { nil } { s.backends } else { c.runtime.backends }
 	logs := if c.runtime == unsafe { nil } { s.access_logs } else { c.runtime.logs }
-	c.site = cfg.site_index(m.host)
+	site_host := m.host_name.trim_right('.').to_lower()
+	c.site = cfg.site_index(site_host)
 	if c.site < 0 {
 		s.respond(mut c, 421, 'Misdirected Request', 'Unknown host\n', '')
 		return false
 	}
 	site := cfg.sites[c.site]
 	c.response_headers = site.response_headers.clone()
-	c.header_values = HeaderValues{uri: m.uri, method: m.method, fields: m.fields.clone(), host: m.host.all_before(':'), hostport: m.host, scheme: if c.tls == unsafe { nil } { 'http' } else { 'https' }, remote_host: c.ip, remote_port: c.remote_port}
+	c.header_values = HeaderValues{ uri: m.uri, method: m.method, fields: m.fields.clone(), host: m.host_name, hostport: m.host, port: m.host_port, scheme: if c.tls == unsafe { nil } {
+		'http'
+	} else {
+		'https'
+	}, remote_host: c.ip, remote_port: c.remote_port }
 	c.log_early = map[string]json2.Any{}
 	c.log_rules = site.log_rules.clone()
 	c.capture_early_logs(site.log_rules)
@@ -313,9 +330,9 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 			return false
 		}
 		if !site.plain {
-			port := if cfg.https_port == 443 { '' } else { ':${cfg.https_port}' }
-			host := m.host.all_before(':').to_lower().trim_right('.')
-			s.respond(mut c, 308, 'Permanent Redirect', '', 'Location: https://${host}${port}${m.uri}\r\n')
+			https_port := if cfg.https_port == 443 { '' } else { ':${cfg.https_port}' }
+			authority := if site_host.contains(':') { '[${site_host}]' } else { site_host }
+			s.respond(mut c, 308, 'Permanent Redirect', '', 'Location: https://${authority}${https_port}${m.uri}\r\n')
 			return false
 		}
 	} else if site.plain {
@@ -330,6 +347,11 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	c.log_rules << route.log_rules
 	c.access_targets = access_targets(cfg, site, logs, c.log_rules, c.header_values)
 	c.response_headers << route.response_headers
+	if text := route.respond {
+		body := expand_placeholders(text, c.header_values)!
+		s.respond_options(mut c, 200, 'OK', body, '', true, 'text/plain; charset=utf-8')
+		return false
+	}
 	if route.redirect != '' {
 		s.redirect_response(mut c, route)!
 		return false
@@ -367,7 +389,9 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		c.backend_generation = generation
 		if backend.ctx != unsafe { nil } {
 			c.backend_tls = C.vaddy_upstream_tls(backend.ctx, c.backend, &char(backend.name.str))
-			if c.backend_tls == unsafe { nil } { return error('cannot create upstream TLS session') }
+			if c.backend_tls == unsafe { nil } {
+				return error('cannot create upstream TLS session')
+			}
 			c.backend_handshake = true
 			c.backend_handshake_want = 2
 		}
@@ -377,14 +401,20 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	upstream_request.fields = handler_fields
 	if c.output.name != '' {
 		for mut field in upstream_request.fields {
-			if field.lower == 'if-none-match' { field = Field{...field, value: field.value.replace('-${c.output.name}"', '"')} }
+			if field.lower == 'if-none-match' {
+				field = Field{ ...field, value: field.value.replace('-${c.output.name}"', '"') }
+			}
 		}
 	}
 	hosts := upstream_request.fields.filter(it.lower == 'host')
 	upstream_request.host = if hosts.len > 0 { hosts.last().value } else { '' }
 	upstream_request.fields = upstream_request.fields.filter(it.lower != 'host')
 	fallback_host := route.upstream.trim_string_left('https://')
-	host := if route.upstream.starts_with('https://') || upstream_request.host == '' { fallback_host } else { upstream_request.host }
+	host := if route.upstream.starts_with('https://') || upstream_request.host == '' {
+		fallback_host
+	} else {
+		upstream_request.host
+	}
 	upstream_request.fields << Field{'Host', 'host', host}
 	field_count := c.to_backend.request_header(upstream_request, rewrite_uri(m.uri, route.rewrite), c.ip, c.tls != unsafe { nil }, '')
 	if edits.any(it.proxy) {
@@ -393,7 +423,11 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		mut wire_fields := buffer_header_fields(c.to_backend)
 		wire_hosts := wire_fields.filter(it.lower == 'host')
 		wire_fields = wire_fields.filter(it.lower != 'host')
-		wire_fields << Field{'Host', 'host', if wire_hosts.len > 0 && wire_hosts.last().value != '' { wire_hosts.last().value } else { fallback_host }}
+		wire_fields << Field{'Host', 'host', if wire_hosts.len > 0 && wire_hosts.last().value != '' {
+			wire_hosts.last().value
+		} else {
+			fallback_host
+		}}
 		write_header_fields(mut c.to_backend, wire_fields)!
 	} else {
 		// Host is already normalized above. Preserve the same limits without a
@@ -429,7 +463,12 @@ fn (mut s Server) write_response_header(mut c Connection, m Message, close bool)
 	mut header := Buffer{}
 	header.response_header(m, [], close)
 	response_header_buffer(mut header, c.response_headers, c.header_values, m.status, false)!
-	if c.access_targets.len > 0 && (m.status >= 200 || m.status == 101) { c.log_response_fields = buffer_header_fields(header).filter(it.lower !in ['connection', 'transfer-encoding']) }
+	if c.access_targets.len > 0 && (m.status >= 200 || m.status == 101) {
+		c.log_response_fields = buffer_header_fields(header).filter(it.lower !in [
+			'connection',
+			'transfer-encoding',
+		])
+	}
 	if c.to_client.room() < header.len() { return error('response header output exceeds buffer') }
 	c.to_client.add(header.bytes())
 }
@@ -472,7 +511,9 @@ fn (mut s Server) consume_response(mut c Connection) ! {
 		data := c.response_buffer.bytes()
 		limit := if data.len < c.to_client.room() { data.len } else { c.to_client.room() }
 		n := c.response.frame.consume(data[..limit])!
-		if !c.tunnel && c.output.codec == unsafe { nil } { c.log_size = c.response.frame.body_bytes }
+		if !c.tunnel && c.output.codec == unsafe { nil } {
+			c.log_size = c.response.frame.body_bytes
+		}
 		c.to_client.add(data[..n])
 		c.response_buffer.skip(n)
 		if c.response.frame.done && c.response_buffer.len() > 0 {
@@ -550,7 +591,10 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 			return
 		}
 	}
-	if c.h2 != unsafe { nil } { s.pump_h2(mut c, event_fd)!; return }
+	if c.h2 != unsafe { nil } {
+		s.pump_h2(mut c, event_fd)!
+		return
+	}
 	if c.connecting && event_fd == c.backend {
 		// A queued event can refer to a descriptor closed and reused by another
 		// HTTP/2 stream; SO_ERROR == 0 alone does not prove connect completed.
@@ -609,7 +653,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 				}
 			}
 			if n > 0 {
-			c.wire_output.skip(n)
+				c.wire_output.skip(n)
 				progress = true
 			}
 		}
@@ -654,8 +698,12 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 						s.backend_eof(mut c)!
 					} else if err in [2, 3] {
 						c.backend_read_want = if err == 2 { 1 } else { 2 }
-					} else { return error('upstream TLS read failed') }
-				} else { c.backend_read_want = 1 }
+					} else {
+						return error('upstream TLS read failed')
+					}
+				} else {
+					c.backend_read_want = 1
+				}
 			} else {
 				n = int(C.vaddy_recv(c.backend, &scratch[0], u64(limit), 0))
 				if n < 0 { backend_readable = false }
@@ -713,7 +761,10 @@ fn (mut s Server) update_interests(mut c Connection) ! {
 		s.close_client(mut c)
 		return
 	}
-	if c.h2 != unsafe { nil } { s.update_h2_interests(mut c)!; return }
+	if c.h2 != unsafe { nil } {
+		s.update_h2_interests(mut c)!
+		return
+	}
 	mut flags := 0
 	if c.handshake {
 		flags = c.handshake_want
@@ -804,7 +855,10 @@ fn (mut s Server) tick() {
 			}
 			s.pump_h2(mut c, -1) or { c.dead = true }
 			s.update_interests(mut c) or { c.dead = true }
-			if c.dead { s.close_client(mut c); continue }
+			if c.dead {
+				s.close_client(mut c)
+				continue
+			}
 		}
 		in_headers := c.handshake || (!c.have_request && c.request_buffer.len() > 0) || c.connecting || c.backend_handshake
 		if now - c.last_activity > i64(s.opts.idle_timeout) * 1000 || (in_headers && now - c.started > i64(s.opts.header_timeout) * 1000) || (s.draining && now - s.drain_started > 10000) {
@@ -891,7 +945,9 @@ fn (mut s Server) serve_events() ! {
 					C.vaddy_h2_drain(c.h2)
 					s.pump_h2(mut c, -1) or { c.dead = true }
 					s.update_interests(mut c) or { s.close_client(mut c) }
-				} else if !c.have_request { s.close_client(mut c) }
+				} else if !c.have_request {
+					s.close_client(mut c)
+				}
 			}
 		}
 		if s.draining && s.clients.len == 0 { break }

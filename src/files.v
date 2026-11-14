@@ -96,8 +96,11 @@ fn file_path(root string, uri string) !string {
 
 fn file_hidden(path string, config FileConfig, config_path string) bool {
 	abs := os.abs_path(path)
-	if abs == os.abs_path(config_path) { return true }
-	$if windows { if abs.to_lower() == os.abs_path(config_path).to_lower() { return true } }
+	if config_path != '' {
+		config_abs := os.abs_path(config_path)
+		if abs == config_abs { return true }
+		$if windows { if abs.to_lower() == config_abs.to_lower() { return true } }
+	}
 	for pattern in config.hide {
 		if pattern.contains('/') || pattern.contains('\\') {
 			base := os.abs_path(pattern)

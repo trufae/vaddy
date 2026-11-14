@@ -2,6 +2,7 @@ module main
 
 import strconv
 import strings
+import net
 
 const header_limit = 16384
 const buffer_limit = 32768
@@ -20,6 +21,8 @@ mut:
 	start      string
 	fields     []Field
 	host       string
+	host_name  string
+	host_port  string
 	close      bool
 	upgrade    bool
 	expect     bool
@@ -70,6 +73,24 @@ fn invalid_controls(s string, allow_tab bool) bool {
 		if (s[i] < 32 && !(allow_tab && s[i] == 9)) || s[i] == 127 { return true }
 	}
 	return false
+}
+
+fn parse_request_host(value string) !(string, string) {
+	mut host := value.all_before(':')
+	mut suffix := value[host.len..]
+	if value.starts_with('[') {
+		end := value.index(']') or { return error('missing IPv6 bracket') }
+		host = value[1..end]
+		net.canonical_ipv6(host)!
+		suffix = value[end + 1..]
+	} else if !valid_host(host.trim_right('.')) {
+		return error('invalid host name')
+	}
+	if suffix == '' { return host, '' }
+	if !suffix.starts_with(':') { return error('invalid host port') }
+	port := suffix[1..]
+	port_value(port)!
+	return host, port
 }
 
 // The reactor supplies its previous header array, exclusively owned by this
@@ -164,11 +185,7 @@ fn parse_message_reuse(raw string, request bool, head bool, fields []Field) !Mes
 				host_seen = true
 				m.host = value
 				if request {
-					host_name := value.all_before(':')
-					if !valid_host(host_name.trim_right('.')) {
-						return error('invalid host name')
-					}
-					if host_name.len != value.len { port_value(value[host_name.len + 1..])! }
+					m.host_name, m.host_port = parse_request_host(value)!
 				}
 			}
 			'connection' {

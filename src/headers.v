@@ -30,6 +30,7 @@ mut:
 	remote_port string
 	host string
 	hostport string
+	port string
 	scheme string
 	remote_host string
 	upstream_hostport string
@@ -55,7 +56,7 @@ fn placeholder_value(name string, values HeaderValues) ?string {
 		'?query' { return if query == '' { '' } else { '?' + query } }
 		'host' { return values.host }
 		'hostport' { return values.hostport }
-		'port' { return if values.hostport.contains(':') { values.hostport.all_after_last(':') } else { '' } }
+		'port' { return values.port }
 		'scheme' { return values.scheme }
 		'method', 'orig_method' { return values.method }
 		'remote_host', 'client_ip', 'http.vars.client_ip' { return values.remote_host }

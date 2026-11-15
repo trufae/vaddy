@@ -170,7 +170,7 @@ fn (mut s Server) pump_h2(mut parent Connection, event_fd int) ! {
 		}
 		mut state := C.vaddy_h2_first(parent.h2)
 		for state != unsafe { nil } {
-			next := state.next
+			mut next := state.next
 			if state.closed != 0 {
 				s.close_h2_stream(mut parent, state.id)
 				C.vaddy_h2_remove(parent.h2, state)

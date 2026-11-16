@@ -128,7 +128,8 @@ def bundle_windows(stage, binary):
 def smoke_test(stage, windows, bundled):
     env = os.environ.copy()
     # Prove that the executables do not depend on the build toolchain's PATH.
-    system_path = str(Path(env['SystemRoot']) / 'System32') if windows else '/usr/bin:/bin'
+    # Keep Windows' case-insensitive lookup; the plain dict copy has uppercase keys.
+    system_path = str(Path(os.environ['SystemRoot']) / 'System32') if windows else '/usr/bin:/bin'
     env['PATH'] = str(stage) + os.pathsep + system_path
     for key in ('DYLD_LIBRARY_PATH', 'DYLD_FALLBACK_LIBRARY_PATH', 'LD_LIBRARY_PATH'):
         env.pop(key, None)

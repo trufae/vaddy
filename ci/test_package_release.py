@@ -1,4 +1,4 @@
-"""Check dependency bundling without requiring a Windows host."""
+"""Check dependency bundling and smoke tests without requiring a Windows host."""
 import importlib.util
 import os
 from pathlib import Path
@@ -60,6 +60,28 @@ class WindowsBundleTests(unittest.TestCase):
         self.imports['libcrypto.dll'].append('missing.dll')
         with self.assertRaisesRegex(RuntimeError, 'Missing DLL.*missing.dll'):
             self.bundle()
+
+
+class WindowsSmokeTests(unittest.TestCase):
+    def test_system_root_lookup_preserves_windows_environment_semantics(self):
+        class WindowsEnvironment(dict):
+            def __getitem__(self, key):
+                return super().__getitem__(key.upper())
+
+        # Windows os.environ accepts mixed-case keys, but its copy is a plain
+        # dictionary containing uppercase keys.
+        environment = WindowsEnvironment(SYSTEMROOT='C:/Windows', PATH='C:/msys64/ucrt64/bin')
+        stage = Path('bundle')
+        with patch.object(packaging.os, 'environ', environment), \
+                patch.object(packaging.subprocess, 'run') as run:
+            packaging.smoke_test(stage, windows=True, bundled=False)
+
+        self.assertEqual(run.call_count, 2)
+        for call in run.call_args_list:
+            self.assertEqual(call.kwargs['env']['PATH'],
+                             str(stage) + os.pathsep + str(Path('C:/Windows') / 'System32'))
+            self.assertEqual(call.kwargs['env']['SYSTEMROOT'], 'C:/Windows')
+            self.assertTrue(call.kwargs['check'])
 
 
 if __name__ == '__main__':

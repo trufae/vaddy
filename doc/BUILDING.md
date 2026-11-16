@@ -59,7 +59,7 @@ and a CA bundle, and smoke-test the package with the build toolchain removed
 from `PATH`. macOS packages are not notarized. Linux and Alpine use the runtime
 packages listed in [installation instructions](INSTALL.md).
 
-The release assets use the pinned compiler fork from the main CI workflow.
+The release assets use the pinned compiler from the main CI workflow.
 For a local packaging check after `make`, run (choosing the target for your host):
 
 ```sh
@@ -68,17 +68,17 @@ python3 ci/package-release.py macos-arm64 ./vaddy
 
 Compiler and bootstrap revisions are pinned in [ci/toolchain.env](../ci/toolchain.env):
 
-- V: `trufae/v`, `b7b4dd46eeb3d39cf8d3e8ef757093d872cbc230`.
-- C bootstrap: `vlang/vc`, `5e086d589c15060ef9d1d3554d02831dc0172170`.
+- V: `vlang/v`, `e777ef47fdaf31ae7d66fac69f618cf39495c5da`.
+- C bootstrap: `vlang/vc`, `8932ad13ae053610292624bb2208865592f8778a`.
 
-This is the V fork used by the implementation and the archived measurements.
-The jobs build the compiler from source instead of selecting a moving V release.
+The jobs build the compiler from source at these commits. Archived benchmarks
+record their own compiler revisions.
 The operating-system package repositories and action major-version tags can
 still receive updates; the complete environment is not bit-for-bit pinned.
 
 ## V from git
 
-To build the pinned fork's compiler locally into a new directory:
+To build the pinned compiler locally into a new directory:
 
 ```sh
 sh ci/bootstrap-v.sh .tools/v
@@ -179,7 +179,7 @@ tag receives patch updates; select an image digest for stricter reproducibility.
 
 ## Validation status when this workflow was added
 
-The pinned compiler was bootstrapped locally on macOS, then used to build Vaddy,
+The original compiler pin was bootstrapped locally on macOS, then used to build Vaddy,
 pass all four V test files, validate the Caddyfile, and pass the real TCP/TLS
 integration test. The Windows adapter and generated Windows C passed MinGW
 syntax checks; a Windows executable was not linked or run locally.

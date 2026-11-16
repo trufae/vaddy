@@ -26,8 +26,7 @@ cd "$destination"
 
 case "$(uname -s)" in
     MINGW*|MSYS*)
-        # The fork's Windows bootstrap links native helpers absent from older vc
-        # snapshots. --local preserves the pinned vc checkout above.
+        # --local preserves the pinned vc checkout above.
         export VFLAGS='-cc gcc -gc none'
         MSYS2_ARG_CONV_EXCL='*' cmd.exe /c makev.bat -gcc --local
         ./v.exe version

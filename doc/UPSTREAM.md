@@ -11,9 +11,10 @@ today, why that isn't enough, and what the upstream fix should be.
 contribute missing functionality there. Measure request-path replacements with
 `make bench` and `make compare` before removing performance-sensitive local code.
 
-**V from git only.** CI builds the revision in `ci/toolchain.env`
-(`trufae/v` @ `b7b4dd4`). The inventory below uses that git revision as its
-baseline. Released V toolchains are not supported; do not add release fallbacks.
+**V from git only.** CI builds the revision in `ci/toolchain.env`.
+The inventory below was recorded against `trufae/v` at `b7b4dd4`; recheck gaps
+against the current pin before starting upstream work. Released V toolchains
+are not supported; do not add release fallbacks.
 
 Legend: **P0** = perf blocker, keep local. **P1** = real vlib gap, upstream PR
 worth doing. **P2** = ergonomics/cleanup.
@@ -35,7 +36,7 @@ worth doing. **P2** = ergonomics/cleanup.
 | 9 | `Buffer` with read cursor + storage swap | `http.v` | `strings.Builder` (no cursor, `str()` copies) | upstream: builder cursor/swap |
 | 10 | HTTP/1 incremental parser + framing | `http.v` | nothing resumable; `net/http/chunked.decode` is whole-buffer | keep ours (app-level), note API |
 | 11 | `[]Field` instead of `map[string][]string` | `http.v` | `http.Header` is a map | keep (ordering + case) |
-| 12 | token/control-char helpers, no `bytes()` | `http.v` | none; `string.bytes()` **copies** in the pinned git revision | upstream: borrowed `bytes()` |
+| 12 | token/control-char helpers, no `bytes()` | `http.v` | none; `string.bytes()` **copies** in the inventory baseline | upstream: borrowed `bytes()` |
 | 13 | duration parser | `log_writer.v` | `time.parse_duration` exists (vlang/v #29956) | **done**: only Caddy's `d` rewrite stays |
 | 14 | MIME sorted const table | `mime.v`, `mime_data.v` | `mime.get_mime_type` = map lookup in a 15k-line map | upstream: sorted const + binsearch |
 | 15 | multi-range file bodies, chunked pump | `files.v` | `fasthttp` sendfile (whole file only) | keep ours |
@@ -284,7 +285,7 @@ push for it — ordering/case semantics are ours by design.
 ### 3.4 Token / control-char / digit helpers — `src/http.v`
 `is_token`, `all_digits`, `invalid_controls(s, allow_tab)`.
 
-**Why**: `s.bytes()` **copies** in the pinned git revision (`vlib/builtin/string.v` allocates a
+**Why**: `s.bytes()` **copies** in the inventory baseline (`vlib/builtin/string.v` allocates a
 `[]u8` and `vmemcpy`s). So every "does this string contain only token chars"
 one-liner costs an allocation. We index the string directly instead.
 

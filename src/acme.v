@@ -315,9 +315,12 @@ fn issue_internal(opts Options, exe string, dir string) ! {
 			'-out', ca_key])!
 	}
 	if !os.exists(ca_cert) {
+		// OpenSSL 4 stopped adding key identifiers on its own, and strict RFC 5280
+		// verifiers reject a CA certificate without a subject key identifier.
 		openssl_command(exe, ['req', '-new', '-x509', '-key', ca_key, '-days', '3650', '-subj',
-			'/CN=Vaddy Local Authority', '-addext', 'basicConstraints=critical,CA:TRUE', '-addext',
-			'keyUsage=critical,keyCertSign,cRLSign', '-out', ca_cert])!
+			'/CN=Vaddy Local Authority', '-addext', 'subjectKeyIdentifier=hash', '-addext',
+			'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign',
+			'-out', ca_cert])!
 	}
 	serial := hex.encode(crypto_rand.bytes(16)!)
 	openssl_command(exe, ['x509', '-req', '-inform', 'DER', '-in', os.join_path(dir, 'csr.der'),
@@ -362,7 +365,8 @@ fn provision_certificate(cfg Config, opts Options, exe string) ! {
 		'-out', key])!
 	openssl_command(exe, ['req', '-new', '-key', key, '-subj', '/CN=${cfg.domains()[0]}', '-addext',
 		'subjectAltName=${san}', '-outform', 'DER', '-out', os.join_path(dir, 'csr.der')])!
-	os.write_file(os.join_path(dir, 'extensions'), 'subjectAltName=${san}\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\n')!
+	// Key identifiers are spelled out because OpenSSL 4 no longer adds them implicitly.
+	os.write_file(os.join_path(dir, 'extensions'), 'subjectAltName=${san}\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n')!
 	site := cfg.tls_site() or { return error('no TLS site') }
 	if site.tls_mode == 'internal' {
 		issue_internal(opts, exe, dir)!

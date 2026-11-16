@@ -245,9 +245,13 @@ destination steals the pending queue instead of copying it.
 
 **Why**: `strings.Builder` has no read cursor, and `Builder.str()` allocates +
 copies accumulated bytes before clearing (documented in `doc/PERFLEARN.md`).
-`drain_builder(mut other, cap)` exists but *frees* the other builder's memory —
-a handoff, not a swap, and it resets the source to a fresh allocation. So it
-can't be used for `transfer_to`.
+`drain_builder(mut other, cap)` does exist (since 2021, `@[manualfree]`): it
+appends `other` into `b`, then `free()`s `other` and re-creates it with
+`new_builder(cap)`. That is a *drain*, not a *swap* — the source loses its
+capacity and `cap` has to be guessed, and `b << *other` is a full copy anyway.
+For `transfer_to` we need to exchange ownership when the destination is empty
+and we keep our own buffer when it isn't, so we can't use it. See
+`Buffer.transfer_to` in `src/http.v`.
 
 **Upstream fix** in `strings`: `Builder.read_pos`, `bytes() []u8` view,
 `room() int`, `skip(n)`, `swap(mut other Builder)`, and a documented

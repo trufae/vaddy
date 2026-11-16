@@ -133,6 +133,9 @@ def run(binary):
                 else:
                     raise AssertionError("certificate issuance timed out")
                 context = ssl.create_default_context(cafile=str(root / "data/pki/root.crt"))
+                # Newer Pythons enable this by default; demand it everywhere so issued
+                # certificates keep the key identifiers RFC 5280 verifiers require.
+                context.verify_flags |= ssl.VERIFY_X509_STRICT
                 # Certificate publication and listener context replacement are independent.
                 while True:
                     try:

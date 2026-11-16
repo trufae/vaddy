@@ -294,7 +294,7 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	backends := if c.runtime == unsafe { nil } { s.backends } else { c.runtime.backends }
 	logs := if c.runtime == unsafe { nil } { s.access_logs } else { c.runtime.logs }
 	site_host := m.host_name.trim_right('.').to_lower()
-	c.site = cfg.site_index(site_host)
+	c.site = cfg.site_index(site_host, c.tls != unsafe { nil })
 	if c.site < 0 {
 		s.respond(mut c, 421, 'Misdirected Request', 'Unknown host\n', '')
 		return false

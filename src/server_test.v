@@ -591,3 +591,16 @@ fn test_respond_with_normalized_or_ipv6_host() ! {
 	h.pump()!
 	assert receive(h.client).starts_with('HTTP/1.1 400')
 }
+
+fn test_port_only_requests_and_named_site_precedence() ! {
+	for host in ['localhost', '127.0.0.1:1234', '[::1]:1234', 'unknown.example', 'EXAMPLE.ORG.'] {
+		mut h := harness()!
+		h.s.cfg = parse_config('{\n http_port 1234\n}\n:1234 {\n respond fallback\n}\nhttp://example.org {\n respond named\n}')!
+		send_text(h.client, 'GET / HTTP/1.1\r\nHost: ${host}\r\n\r\n')
+		h.pump()!
+		response := receive(h.client)
+		assert response.starts_with('HTTP/1.1 200')
+		assert response.ends_with('\r\n\r\n' + if host == 'EXAMPLE.ORG.' { 'named' } else { 'fallback' })
+		h.close()
+	}
+}

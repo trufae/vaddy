@@ -58,6 +58,52 @@ def free_port():
         return sock.getsockname()[1]
 
 
+def port_only(binary, engine="vaddy"):
+    for address_prefix in ("", "http://"):
+        for workers in ((1, 3) if engine == "vaddy" else (1,)):
+            port = free_port()
+            with tempfile.TemporaryDirectory(prefix=f"{engine}-port-only-") as directory:
+                root = Path(directory)
+                config = root / "Caddyfile"
+                config.write_text(f'{{\n admin off\n}}\n{address_prefix}:{port} {{\n respond "It works!"\n}}\n')
+                args = [binary, "run", "--config", str(config), "--adapter", "caddyfile"]
+                if engine == "vaddy":
+                    args += ["--bind", "127.0.0.1", "--data", str(root / "data"), "--workers", str(workers)]
+                with (root / "server.log").open("w+") as log:
+                    proc = subprocess.Popen(args, stdout=log, stderr=log)
+                    try:
+                        deadline = time.monotonic() + 10
+                        while True:
+                            if proc.poll() is not None:
+                                log.seek(0)
+                                raise AssertionError(log.read())
+                            try:
+                                with socket.create_connection(("127.0.0.1", port), timeout=.2):
+                                    break
+                            except OSError:
+                                if time.monotonic() >= deadline:
+                                    raise AssertionError("port-only listener did not start")
+                                time.sleep(.02)
+                        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+                        try:
+                            for host in ("localhost", f"127.0.0.1:{port}", f"[::1]:{port}", "arbitrary.example"):
+                                conn.request("GET", "/hello", headers={"Host": host})
+                                response = conn.getresponse()
+                                assert response.status == 200, (engine, host, response.status)
+                                assert response.read() == b"It works!"
+                        finally:
+                            conn.close()
+                        assert not (root / "data" / "current").exists(), "HTTP site issued a certificate"
+                    finally:
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=12)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            proc.wait()
+    print(f"PASS: {engine} port-only HTTP, arbitrary hosts, no TLS issuance")
+
+
 def run(binary):
     backend = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Backend)
     backend.daemon_threads = True
@@ -167,4 +213,6 @@ def run(binary):
 
 
 if __name__ == "__main__":
-    run(str(Path(sys.argv[1] if len(sys.argv) > 1 else "./vaddy").resolve()))
+    binary = str(Path(sys.argv[1] if len(sys.argv) > 1 else "./vaddy").resolve())
+    port_only(binary)
+    run(binary)

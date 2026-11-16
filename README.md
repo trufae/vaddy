@@ -68,6 +68,8 @@ example.org {
 
 For public HTTPS, point your domain's DNS at the server and allow incoming TCP
 ports **80 and 443**, with permission for Vaddy to bind them.
+For HTTP without a hostname, use `:1234` as the site address; it serves all hosts
+on that port without automatic HTTPS.
 See [usage](doc/USAGE.md) for local TLS, custom ports and configuration examples.
 
 ## Explore

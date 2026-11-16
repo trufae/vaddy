@@ -1,7 +1,7 @@
 # Using Vaddy
 
 Run the commands in this guide from the repository root. Configure the site
-hostname and upstream in [Caddyfile](../Caddyfile) before starting the server.
+address and upstream in [Caddyfile](../Caddyfile) before starting the server.
 The checked-in hostname, `example.org`, is a placeholder for a domain you control.
 
 ## Build and run
@@ -42,6 +42,38 @@ Reload after a backend address change; periodic DNS refresh is not implemented.
 options. `SIGINT`/`SIGTERM` stop new accepts, drain active requests for up to ten
 seconds, then close remaining connections. Request settings can be reloaded without a restart; see configuration reload
 below. Certificate updates are loaded automatically.
+
+## HTTP without a hostname
+
+Use a port-only address to serve HTTP for any Host header, as in Caddy:
+
+```caddyfile
+:1234 {
+    respond "It works!"
+}
+```
+
+```sh
+./vaddy run --config ./Caddyfile --data ./.vaddy-data
+curl http://localhost:1234/
+```
+
+This listens on port 1234 without issuing certificates or opening an HTTPS
+listener. `http://:1234` is also supported. Replace `respond` with
+`reverse_proxy localhost:8001` or `file_server` as needed. Named sites take
+precedence over the catch-all regardless of their order in the file.
+
+Vaddy supports one HTTP listener port and one HTTPS listener port per process.
+When combining a port-only HTTP site with named sites, set the global
+`http_port` to that same port. Configurations needing additional listener ports
+fail validation. CLI `--http-port` and `--https-port` still override the selected
+ports, and changing a listener port requires a restart.
+
+Like Caddy, `:443` (or the configured `https_port`) selects HTTPS. An explicit
+`https://:8443` or a `tls` directive on a non-HTTP port also selects HTTPS.
+A hostname-free HTTPS configuration requires `tls cert.pem key.pem`; automatic
+issuance needs at least one named HTTPS site sharing the same TLS policy.
+See [Caddy's address rules](https://caddyserver.com/docs/caddyfile/concepts#addresses).
 
 ## Automatic HTTPS
 

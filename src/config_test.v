@@ -2,6 +2,80 @@ module main
 
 import os
 
+fn test_port_only_http_sites() ! {
+	for address in [':1234', 'http://:1234', 'HTTP://:1234', ':80', ':65535'] {
+		cfg := parse_config('${address} {\n respond "It works!"\n}')!
+		assert cfg.http_port == address.all_after_last(':').int()
+		assert cfg.sites[0].plain
+		assert cfg.sites[0].hosts == ['*']
+		assert cfg.domains().len == 0
+		if _ := cfg.tls_site() { assert false }
+		assert cfg.site_index('anything.example', false) == 0
+		assert cfg.site_index('127.0.0.1', false) == 0
+		assert cfg.site_index('anything.example', true) == -1
+	}
+	cfg := load_config(':1234 {\n respond ok\n}', Options{http_port: '8080'})!
+	assert cfg.http_port == 8080
+	remapped := parse_config('{\n https_port 8443\n}\n:443 {\n respond ok\n}')!
+	assert remapped.http_port == 443 && remapped.sites[0].plain
+}
+
+fn test_port_only_named_site_precedence_and_protocols() ! {
+	fallback := ':1234 {\n respond fallback\n}'
+	named := 'http://example.org {\n respond named\n}'
+	for sites in ['${fallback}\n${named}', '${named}\n${fallback}'] {
+		cfg := parse_config('{\n http_port 1234\n}\n${sites}')!
+		assert cfg.sites[cfg.site_index('example.org', false)].routes[0].respond? == 'named'
+		assert cfg.sites[cfg.site_index('other.example', false)].routes[0].respond? == 'fallback'
+	}
+	cfg := parse_config('{\n http_port 1234\n}\n${fallback}\nexample.org {\n tls internal\n respond secure\n}')!
+	assert cfg.domains() == ['example.org']
+	assert cfg.site_index('example.org', false) == 1
+	assert cfg.site_index('example.org', true) == 1
+	assert cfg.site_index('other.example', false) == 0
+	assert cfg.site_index('other.example', true) == -1
+
+	aliases := parse_config(':80, http://example.org {\n respond ok\n}')!
+	assert aliases.site_index('other.example', false) == 0
+}
+
+fn test_port_only_https_sites() ! {
+	for address in [':443', 'https://:8443', ':8443'] {
+		cfg := parse_config('${address} {\n tls cert.pem key.pem\n respond secure\n}')!
+		assert cfg.https_port == address.all_after_last(':').int()
+		assert !cfg.sites[0].plain
+		assert cfg.domains().len == 0
+		assert cfg.site_index('anything.example', true) == 0
+		assert cfg.site_index('anything.example', false) == -1
+	}
+	cfg := parse_config('{\n https_port 8443\n}\n:8443 {\n tls cert.pem key.pem\n respond secure\n}')!
+	assert !cfg.sites[0].plain
+	shared := parse_config(':443 {\n tls internal\n respond fallback\n}\nexample.org {\n tls internal\n respond named\n}')!
+	assert shared.domains() == ['example.org']
+	assert shared.site_index('example.org', true) == 1
+	assert shared.site_index('other.example', true) == 0
+}
+
+fn test_invalid_or_conflicting_port_only_sites() {
+	for address in [':', ':0', ':65536', ':-1', ':+80', ':abc', ':1234/path', ':1234:5678',
+		':443', 'https://:8443', 'http://:443', 'https://:80', 'https://http://:1234'] {
+		if _ := parse_config('${address} {\n respond ok\n}') { assert false, address }
+	}
+	for input in [
+		':1234 {\n respond a\n}\n:1235 {\n respond b\n}',
+		':1234 {\n respond a\n}\nhttp://:1234 {\n respond b\n}',
+		':1234, :1235 {\n respond a\n}',
+		':1234 {\n respond a\n}\nhttp://example.org {\n respond b\n}',
+		':1234 {\n respond a\n}\nexample.org {\n respond b\n}',
+		':1234 {\n tls internal\n respond a\n}',
+		'http://:1234 {\n tls cert.pem key.pem\n respond a\n}',
+		':80 {\n tls cert.pem key.pem\n respond a\n}',
+		':8443 {\n tls cert.pem key.pem\n respond a\n}\nexample.org {\n tls cert.pem key.pem\n respond b\n}',
+	] {
+		if _ := parse_config(input) { assert false, input }
+	}
+}
+
 fn test_supplied_caddyfile() ! {
 	cfg := parse_config(os.read_file(os.join_path(@VMODROOT, 'Caddyfile'))!)!
 	assert cfg.http_port == 80 && cfg.https_port == 443

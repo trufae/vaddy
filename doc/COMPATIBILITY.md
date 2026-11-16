@@ -6,7 +6,7 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | Feature | Implemented behavior |
 | --- | --- |
 | Global options | `admin off`, `http_port`, `https_port`, `email`, `acme_ca` |
-| Site addresses | DNS hostnames, comma/space separated aliases, multiple sites; `http://name` opts out of TLS. Use global/CLI ports instead of address port suffixes. |
+| Site addresses | DNS hostnames, comma/space separated aliases, multiple sites; `http://name` opts out of TLS. Port-only `:1234` / `http://:1234` sites accept all hosts; named sites take precedence. One HTTP and one HTTPS listener port; hostname port suffixes still require global/CLI ports. |
 | Matchers | `@name path /a /prefix/*`; inline exact/trailing-wildcard `handle` matchers; case-insensitive, unescaped, normalized path matching |
 | Routing | Mutually exclusive `handle` blocks, single-path specificity sorting, unmatched fallback |
 | Redirects | `redir [path or @matcher] target [3xx/401/permanent/temporary/html/placeholder]`; redirect-only sites and redirects inside `handle` |
@@ -146,7 +146,9 @@ tracking them here does not imply that removing those restrictions is desirable.
   single-site configurations without braces, backtick strings and heredocs.
 - [ ] **CADDY-032 — Site addresses and global options:** support wildcard and
   IPv6 site addresses, per-site port syntax and the remaining global/server options.
-  Vaddy currently uses hostname-based sites and global/CLI listener ports.
+  Vaddy supports DNS names and port-only catch-all sites, with one listener port
+  per protocol. Hostname port suffixes and multiple ports per protocol remain
+  unsupported; named sites use global/CLI listener ports.
 
 ### Website serving and authentication
 

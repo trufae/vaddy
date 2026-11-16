@@ -43,6 +43,7 @@ mut:
 	log_rules []LogRule
 	hosts          []string
 	plain          bool
+	port           int
 	response_headers []HeaderEdit
 	request_headers []HeaderEdit
 	routes         []Route
@@ -338,18 +339,35 @@ fn parse_config(input string) !Config {
 		}
 		mut site := Site{}
 		for addr in d.args {
-			host := addr.trim_right(',').trim_string_left('https://').trim_string_left('http://').to_lower()
-			plain := addr.starts_with('http://')
-			if !valid_host(host) {
-				return error('line ${d.line}: expected DNS hostname (use global http_port/https_port for alternate ports): ${addr}')
+			address := addr.trim_right(',').to_lower()
+			mut host := address
+			if host.starts_with('http://') { host = host['http://'.len..] }
+			else if host.starts_with('https://') { host = host['https://'.len..] }
+			mut plain := address.starts_with('http://')
+			mut port := if plain { cfg.http_port } else { cfg.https_port }
+			if host.starts_with(':') {
+				port = port_value(host[1..])!
+				explicit_https := address.starts_with('https://')
+				has_tls := d.children.any(it.args.len > 0 && it.args[0] == 'tls')
+				if (plain && port == cfg.https_port) || (explicit_https && port == cfg.http_port) {
+					return error('line ${d.line}: site scheme conflicts with configured HTTP/HTTPS port: ${addr}')
+				}
+				plain = !explicit_https && port != cfg.https_port && (plain || port == cfg.http_port || !has_tls)
+				if plain && has_tls { return error('line ${d.line}: HTTP site cannot configure TLS: ${addr}') }
+				host = '*'
+			} else if !valid_host(host) {
+				return error('line ${d.line}: expected DNS hostname or :port (use global http_port/https_port for hostname ports): ${addr}')
 			}
 			if site.hosts.len > 0 && plain != site.plain {
 				return error('cannot mix HTTP and HTTPS addresses in a site')
 			}
-			if host in hosts { return error('duplicate site: ${host}') }
-			hosts[host] = true
+			if site.hosts.len > 0 && port != site.port { return error('site addresses must share one listener port') }
+			key := '${if plain { 'http' } else { 'https' }}://${host}:${port}'
+			if key in hosts { return error('duplicate site: ${addr}') }
+			hosts[key] = true
 			site.hosts << host
 			site.plain = plain
+			site.port = port
 		}
 		for child in d.children {
 			if child.args.len == 0 { return error('line ${child.line}: unexpected block') }
@@ -456,16 +474,34 @@ fn parse_config(input string) !Config {
 		}
 	}
 	if cfg.sites.len == 0 { return error('no sites configured') }
-	if cfg.http_port == cfg.https_port { return error('HTTP and HTTPS ports must differ') }
+	mut http_port := 0
+	mut https_port := 0
 	mut policy := ''
 	for site in cfg.sites {
-		if site.plain { continue }
+		if site.plain {
+			if http_port != 0 && http_port != site.port { return error('only one HTTP listener port is supported') }
+			http_port = site.port
+			continue
+		}
+		if https_port != 0 && https_port != site.port { return error('only one HTTPS listener port is supported') }
+		https_port = site.port
 		p := '${site.tls_mode}|${site.cert}|${site.key}'
 		if policy != '' && policy != p {
 			return error('HTTPS sites must share one TLS policy; certificates cover all configured names')
 		}
 		policy = p
 	}
+	if https_port != 0 {
+		if http_port != 0 && http_port != cfg.http_port {
+			return error('HTTP sites must use the global http_port when HTTPS is enabled')
+		}
+		cfg.https_port = https_port
+		if cfg.domains().len == 0 && cfg.sites.any(!it.plain && it.tls_mode != 'manual') {
+			return error('hostname-free HTTPS requires tls cert.pem key.pem')
+		}
+	}
+	if http_port != 0 { cfg.http_port = http_port }
+	if cfg.http_port == cfg.https_port { return error('HTTP and HTTPS ports must differ') }
 	return cfg
 }
 
@@ -476,13 +512,23 @@ fn (cfg Config) tls_site() ?Site {
 
 fn (cfg Config) domains() []string {
 	mut result := []string{}
-	for site in cfg.sites { if !site.plain { result << site.hosts } }
+	for site in cfg.sites { if !site.plain { result << site.hosts.filter(it != '*') } }
 	return result
 }
 
-fn (cfg Config) site_index(name string) int {
-	for i, site in cfg.sites { if name in site.hosts || site.hosts.contains('*') { return i } }
-	return -1
+fn (cfg Config) site_index(name string, tls bool) int {
+	mut fallback := -1
+	mut redirect := -1
+	for i, site in cfg.sites {
+		if site.plain == tls {
+			if !tls && name in site.hosts { redirect = i }
+			continue
+		}
+		if name in site.hosts { return i }
+		if '*' in site.hosts { fallback = i }
+	}
+	// Named HTTPS redirects precede the HTTP catch-all, just like named sites.
+	return if redirect >= 0 { redirect } else { fallback }
 }
 
 fn normalized_path(uri string) ?string {

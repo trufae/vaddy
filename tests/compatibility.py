@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 
-from integration import free_port
+from integration import free_port, port_only
 
 
 @contextlib.contextmanager
@@ -299,6 +299,8 @@ def log_customization(vaddy, caddy):
 if __name__ == "__main__":
     vaddy, caddy = map(lambda p: str(Path(p).resolve()), sys.argv[1:3])
     print("Reference:", subprocess.check_output([caddy, "version"], text=True).strip())
+    port_only(vaddy)
+    port_only(caddy, "caddy")
     redirects(vaddy, caddy)
     headers(vaddy, caddy)
     logging(vaddy, caddy)

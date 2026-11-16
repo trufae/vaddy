@@ -92,8 +92,9 @@ jobs:
         shell: msys2 {0}
         run: |
           make V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
-          make test V="$PWD/.tools/v/v.exe" VTESTFLAGS='-cc gcc -gc boehm'
+          objdump -p ./vaddy.exe | sed -n '/DLL Name:/p'
           ./vaddy.exe validate --config Caddyfile
+          make test V="$PWD/.tools/v/v.exe" VTESTFLAGS='-cc gcc -gc boehm'
           make integration V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'
           python3 -m pip install --break-system-packages -r tests/requirements.txt
           make http2 V="$PWD/.tools/v/v.exe" VFLAGS='-prod -cc gcc -gc boehm'

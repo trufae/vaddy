@@ -10,6 +10,13 @@ ALPINE_BUILD_ARGS ?=
 
 ifeq ($(OS),Windows_NT)
 EXEEXT := .exe
+# V's OpenSSL module adds the runner's standalone OpenSSL paths before
+# pkg-config flags. Prefer the selected toolchain's headers and import libraries
+# explicitly: pkg-config may omit -I/-L for its default system directories.
+# Environment CFLAGS precede module flags; V's -cflags option follows them.
+OPENSSL_INCLUDEDIR := $(shell pkg-config --variable=includedir openssl)
+OPENSSL_LIBDIR := $(shell pkg-config --variable=libdir openssl)
+VPLATFORMENV := CFLAGS='-I"$(OPENSSL_INCLUDEDIR)" -L"$(OPENSSL_LIBDIR)" $(CFLAGS)'
 endif
 TARGET := vaddy$(EXEEXT)
 
@@ -26,11 +33,11 @@ all: $(TARGET)
 	mkdir -p .build
 	$(CXX) -std=c++17 -O2 $(shell pkg-config --cflags re2) -c src/regex.cc -o $@
 
-$(TARGET): .build/regex.o $(wildcard src/*.v) $(wildcard src/*.h) v.mod
-	$(V) $(VFLAGS) -d use_openssl -o $@ src
+$(TARGET): .build/regex.o $(wildcard src/*.v) $(wildcard src/*.h) v.mod Makefile
+	$(VPLATFORMENV) $(V) $(VFLAGS) -d use_openssl -o $@ src
 
 test: .build/regex.o
-	$(V) $(VTESTFLAGS) -d use_openssl test src
+	$(VPLATFORMENV) $(V) $(VTESTFLAGS) -d use_openssl test src
 
 integration: $(TARGET)
 	python3 tests/integration.py ./$(TARGET)
@@ -51,7 +58,7 @@ compatibility: $(TARGET)
 	python3 tests/compatibility.py ./$(TARGET) ./caddy-bench
 
 bench: .build/regex.o
-	VADDY_BENCH=1 $(V) -cc clang -gc boehm -cflags '-O3' -d use_openssl src/server_test.v
+	VADDY_BENCH=1 $(VPLATFORMENV) $(V) -cc clang -gc boehm -cflags '-O3' -d use_openssl src/server_test.v
 
 bench-workers:
 	python3 tests/ipc_bench.py

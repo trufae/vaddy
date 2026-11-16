@@ -111,6 +111,11 @@ runtime. Run it with the matching UCRT64 OpenSSL, RE2, zlib, nghttp2, Zstandard 
 certificate management also needs the UCRT64 `openssl.exe`. CI packages these
 dependencies in a ZIP that can run outside MSYS2; see [installation instructions](INSTALL.md).
 
+The Makefile puts the OpenSSL include and library directories reported by
+`pkg-config` ahead of V's standalone Windows OpenSSL paths. This keeps the build
+and tests linked to the UCRT64 DLLs available on `PATH`, even on CI runners with
+another OpenSSL installation under `C:/Program Files`.
+
 Worker notifications and socket-I/O tests use private loopback TCP pairs on
 Windows, where the POSIX `socketpair` call is unavailable. Each reactor owns its
 polling array. Windows handles retain their width across the V/C boundary, and

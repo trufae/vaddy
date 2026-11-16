@@ -6,6 +6,10 @@ executable. Go is only needed for the optional comparison/benchmark drivers;
 the three-server comparison also requires Rust/Cargo, CMake, and a C/C++ compiler
 for Raddy's release build. See [benchmark setup](TESTING.md).
 
+Vaddy targets V built from git. Released V toolchains are not supported; use the
+tested compiler revision in [ci/toolchain.env](../ci/toolchain.env) or a newer
+git build with the required vlib APIs, including `time.parse_duration`.
+
 ## GitHub Actions
 
 [ci.yml](../.github/workflows/ci.yml) runs on pushes, pull requests, and manual
@@ -55,9 +59,8 @@ and a CA bundle, and smoke-test the package with the build toolchain removed
 from `PATH`. macOS packages are not notarized. Linux and Alpine use the runtime
 packages listed in [installation instructions](INSTALL.md).
 
-The release assets use the pinned compiler fork from the main CI workflow;
-the separate stock-V workflow is a compatibility check. For a local packaging
-check after `make`, run (choosing the target for your host):
+The release assets use the pinned compiler fork from the main CI workflow.
+For a local packaging check after `make`, run (choosing the target for your host):
 
 ```sh
 python3 ci/package-release.py macos-arm64 ./vaddy
@@ -73,35 +76,7 @@ The jobs build the compiler from source instead of selecting a moving V release.
 The operating-system package repositories and action major-version tags can
 still receive updates; the complete environment is not bit-for-bit pinned.
 
-## Stock V release check
-
-[setup-v.yml](../.github/workflows/setup-v.yml) is a second, independent workflow.
-Instead of bootstrapping the fork, it downloads an official prebuilt release from
-[`vlang/v`](https://github.com/vlang/v/releases) and runs the same build,
-unit tests, Caddyfile validation, integration test, and HTTP/2, encoding and
-file suites. It runs on Ubuntu 24.04 and macOS 15. It checks whether Vaddy builds
-and passes its tests without the fork's patches.
-
-The matrix selects `v_linux.zip` for Ubuntu x86-64 and `v_macos_arm64.zip` for
-macOS arm64. The release is pinned by `V_VERSION` in
-[ci/toolchain.env](../ci/toolchain.env). Override it for a manual run with the
-`v-version` dispatch input, using a release tag with those assets. Branches and
-commit IDs are not supported. The workflow installs under `.tools/stock-v`
-and adds the extracted compiler directory to `PATH`.
-
-`vlang/setup-v@v1.7` downloads source even when given a release tag, then builds
-it using the current `vc` bootstrap. That bootstrap can be incompatible with
-older V sources. Downloading the release binaries avoids that moving dependency.
-
-To try that release locally into a separate directory:
-
-```sh
-curl -fL -o /tmp/v.zip https://github.com/vlang/v/releases/download/0.5.2/v_macos_arm64.zip
-mkdir -p .tools/stock-v
-unzip -q /tmp/v.zip -d .tools/stock-v
-make -B V="$PWD/.tools/stock-v/v/v"
-make test V="$PWD/.tools/stock-v/v/v"
-```
+## V from git
 
 To build the pinned fork's compiler locally into a new directory:
 

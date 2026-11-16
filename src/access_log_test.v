@@ -56,6 +56,19 @@ fn test_log_duration_compound_units_and_limits() ! {
 	}
 }
 
+fn test_log_duration_days() ! {
+	assert log_duration('1d')! == 24 * time.hour
+	assert log_duration('+1.5d12h')! == 48 * time.hour
+	assert log_duration('-0d')! == 0
+	assert log_duration('1d30m')! == 24 * time.hour + 30 * time.minute
+	assert log_duration('1m2d')! == time.minute + 48 * time.hour
+	assert log_duration('1d2d')! == 72 * time.hour
+	assert log_duration('0.001d')! == 86400 * time.millisecond
+	for value in ['d', '1hd', '1.2.3d', '-1d', '-1.25d12h', '1dd', '2562048d'] {
+		if _ := log_duration(value) { assert false, value }
+	}
+}
+
 fn test_log_file_replacement_between_writes() ! {
 	dir := os.join_path(os.temp_dir(), 'vaddy-log-replace-${os.getpid()}')
 	defer { os.rmdir_all(dir) or {} }

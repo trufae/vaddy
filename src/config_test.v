@@ -2,6 +2,22 @@ module main
 
 import os
 
+fn test_respond_body_validation() ! {
+	for size in [header_limit + 1, respond_body_limit] {
+		body := 'x'.repeat(size)
+		cfg := parse_config(':8080 {\n respond "${body}"\n}')!
+		assert cfg.sites[0].routes[0].respond? == body
+	}
+	body := 'x'.repeat(respond_body_limit + 1)
+	for directive in ['respond "${body}"', 'handle {\n respond "${body}"\n }'] {
+		if _ := parse_config(':8080 {\n ${directive}\n}') {
+			assert false, 'oversized respond template was accepted'
+		} else {
+			assert err.msg().contains('respond body exceeds ${respond_body_limit} bytes')
+		}
+	}
+}
+
 fn test_port_only_http_sites() ! {
 	for address in [':1234', 'http://:1234', 'HTTP://:1234', ':80', ':65535'] {
 		cfg := parse_config('${address} {\n respond "It works!"\n}')!

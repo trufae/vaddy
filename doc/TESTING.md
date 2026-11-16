@@ -145,6 +145,10 @@ uploads/downloads, chunked bodies, duplicate cookies, HEAD, cancelled requests,
 early redirects and HTTP/2 log accounting. Vaddy-specific checks exercise reload
 snapshots on a live connection and graceful GOAWAY with an active response
 (the latter is skipped on Windows, where terminate is a forced stop).
+Fixed responses are checked with small flow-control windows, HEAD, concurrent
+streams and early cancellation of oversized POSTs. The V tests cover the
+separate header/body expansion limits, 1 MiB response validation, bounded output
+queues, keep-alive reuse and HTTP/1 upload rejection.
 
 ## Compression comparisons
 

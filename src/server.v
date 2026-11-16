@@ -85,6 +85,7 @@ mut:
 	tunnel                 bool
 	dead                   bool
 	local                  bool
+	local_body             string
 	site                   int = -1
 	response_headers       []HeaderEdit
 	header_values          HeaderValues
@@ -222,10 +223,11 @@ fn (mut s Server) respond_options(mut c Connection, code int, reason string, bod
 	}
 	c.log_size = response_body.len
 	c.to_client.add(header.bytes())
-	if c.request.method != 'HEAD' { c.to_client.add(response_body.bytes()) }
+	c.local_body = if c.request.method == 'HEAD' { '' } else { response_body }
 	c.local = true
 	c.have_response = true
-	c.response = Message{ frame: Framing{ done: true } }
+	c.response = Message{ frame: Framing{ remaining: c.local_body.len, done: c.local_body == '' } }
+	c.pump_local_body()
 }
 
 fn (mut s Server) accept_clients(listener int, tls bool) {
@@ -348,7 +350,10 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	c.access_targets = access_targets(cfg, site, logs, c.log_rules, c.header_values)
 	c.response_headers << route.response_headers
 	if text := route.respond {
-		body := expand_placeholders(text, c.header_values)!
+		body := expand_placeholders_limited(text, c.header_values, respond_body_limit) or {
+			s.respond(mut c, 500, 'Internal Server Error', '', '')
+			return false
+		}
 		s.respond_options(mut c, 200, 'OK', body, '', true, 'text/plain; charset=utf-8')
 		return false
 	}
@@ -621,9 +626,10 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 	mut backend_readable := event_fd == c.backend || (c.backend_tls != unsafe { nil } && C.vaddy_tls_has_pending(c.backend_tls) != 0)
 	for _ in 0 .. 8 {
 		mut progress := false
-		file_remaining := c.response.frame.remaining
+		body_remaining := c.response.frame.remaining
+		c.pump_local_body()
 		c.pump_file()!
-		if file_remaining != c.response.frame.remaining { progress = true }
+		if body_remaining != c.response.frame.remaining { progress = true }
 		before_output := c.to_client.len()
 		c.prepare_output()!
 		if before_output != c.to_client.len() { progress = true }

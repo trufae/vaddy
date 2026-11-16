@@ -1,6 +1,7 @@
 module main
 
 import net.urllib
+import strings
 
 struct HeaderCondition {
 	name string
@@ -225,22 +226,37 @@ fn expand_header(value string, values HeaderValues) !string {
 }
 
 fn expand_placeholders(value string, values HeaderValues) !string {
+	return expand_placeholders_limited(value, values, header_limit)
+}
+
+fn expand_placeholders_limited(value string, values HeaderValues, limit int) !string {
+	if !value.contains('{') {
+		if value.len > limit { return error('expanded value exceeds ${limit} bytes') }
+		return value
+	}
 	// Single pass: request values are never reinterpreted as placeholders.
-	mut output := ''
+	mut output := strings.new_builder(0)
+	defer { unsafe { output.free() } }
 	mut start := 0
 	for start < value.len {
+		mut part := ''
 		if value[start] != `{` {
 			end := value.index_after('{', start) or { value.len }
-			output += value[start..end]
+			part = value[start..end]
 			start = end
 		} else {
-			end := value.index_after('}', start) or { output += value[start..]; break }
-			output += placeholder_value(value[start + 1..end], values) or { value[start..end + 1] }
-			start = end + 1
+			if end := value.index_after('}', start) {
+				part = placeholder_value(value[start + 1..end], values) or { value[start..end + 1] }
+				start = end + 1
+			} else {
+				part = value[start..]
+				start = value.len
+			}
 		}
-		if output.len > header_limit { return error('expanded header too large') }
+		if part.len > limit - output.len { return error('expanded value exceeds ${limit} bytes') }
+		output.write_string(part)
 	}
-	return output
+	return output.str()
 }
 
 fn buffer_header_fields(buffer Buffer) []Field {

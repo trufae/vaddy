@@ -82,6 +82,7 @@ fn cli() ! {
 			loaded
 		}
 		'respond' {
+			validate_respond_body(args[1])!
 			mut cfg := new_config(opts)!
 			cfg.sites << Site{plain: true, hosts: ['*'], routes: [Route{respond: args[1]}]}
 			cfg

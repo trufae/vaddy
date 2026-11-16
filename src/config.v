@@ -216,6 +216,7 @@ fn parse_respond(d Directive) !Route {
 	if d.children.len > 0 || d.args.len !in [2, 3] {
 		return error('line ${d.line}: expected respond [matcher] body')
 	}
+	validate_respond_body(d.args.last()) or { return error('line ${d.line}: ${err}') }
 	mut route := Route{respond: d.args.last()}
 	if d.args.len == 3 {
 		matcher := d.args[1]

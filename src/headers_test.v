@@ -1,5 +1,21 @@
 module main
 
+fn test_placeholder_output_limits_and_literal_braces() ! {
+	values := HeaderValues{host: 'x'.repeat(header_limit), uri: '/{host}'}
+	assert expand_header('{host}', values)! == values.host
+	for template in ['{host}x', '{host}{', '{' + 'x'.repeat(header_limit)] {
+		if _ := expand_header(template, values) {
+			assert false, 'oversized expanded header was accepted'
+		}
+	}
+	assert expand_placeholders_limited('{host}{host}', values, respond_body_limit)! == values.host.repeat(2)
+	assert expand_placeholders_limited('{uri}:{unknown}:{', values, respond_body_limit)! == '/{host}:{unknown}:{'
+	assert expand_placeholders_limited('{host}'.repeat(64), values, respond_body_limit)!.len == respond_body_limit
+	if _ := expand_placeholders_limited('{host}'.repeat(64) + 'x', values, respond_body_limit) {
+		assert false, 'oversized expanded body was accepted'
+	}
+}
+
 fn test_serialized_header_scan_preserves_duplicates_and_values() {
 	mut buffer := Buffer{}
 	buffer.write_string('HTTP/1.1 200 OK\r\nSet-Cookie: a=1\r\nsEt-CoOkIe:\tb=2\r\nX-Value:  \twith:colon \t\r\nX-Empty:\r\n\r\nBody: not a header\r\n')

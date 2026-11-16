@@ -63,6 +63,12 @@ listener. `http://:1234` is also supported. Replace `respond` with
 `reverse_proxy localhost:8001` or `file_server` as needed. Named sites take
 precedence over the catch-all regardless of their order in the file.
 
+`respond` bodies support request placeholders and are limited to 1 MiB
+(1,048,576 bytes), independently of the 16 KiB header limit. Larger templates
+are rejected by configuration validation and by `vaddy respond BODY` before
+startup. If request placeholders expand beyond 1 MiB, that request receives
+500 Internal Server Error. Use `file_server` for larger static content.
+
 Vaddy supports one HTTP listener port and one HTTPS listener port per process.
 When combining a port-only HTTP site with named sites, set the global
 `http_port` to that same port. Configurations needing additional listener ports
@@ -148,14 +154,26 @@ OpenSSL subprocesses are used only for infrequent certificate
 and signing operations, never for proxied traffic. The garbage collector may
 also use helper threads.
 
-Four lazy byte queues per connection each have a 32 KiB logical limit. Bodies
-stream without accumulating in memory; headers are limited to 16 KiB/128 fields,
-chunk lines to 4 KiB, and trailers to 16 KiB. Allocator capacity, parsed headers,
-OpenSSL, GC, and kernel socket buffers add overhead beyond these queue limits.
+Four lazy byte queues per connection each have a 32 KiB logical limit. Proxy and
+file bodies stream without accumulating in memory. Fixed `respond` bodies are
+held in memory up to 1 MiB and sent through those queues. Headers are limited to
+16 KiB/128 fields, chunk lines to 4 KiB, and trailers to 16 KiB. Allocator
+capacity, parsed headers, OpenSSL, GC, and kernel socket buffers add overhead
+beyond these queue limits. Responses needing placeholder processing can retain
+up to 1 MiB per active request; plain text without braces shares its configured
+string.
 The default maximum is 512 clients, with at most one upstream socket each.
 `--max-connections` lets you trade concurrency for memory. The reactor sleeps
 between readiness events and checks timeouts/certificate publication once per
 second. Accepts pause at capacity or on descriptor exhaustion to avoid a busy loop.
+
+The response limit does not impose a total upload-size limit on reverse proxies.
+Uploads stream with backpressure, so a large declared `Content-Length` does not
+allocate that much memory. Local HTTP/1 responses close connections early for
+uploads over 256 KiB, chunked uploads and `Expect: 100-continue`; HTTP/2 cancels
+unfinished uploads after sending the response. Connection limits and timeouts
+bound resource use, but do not replace application upload limits or bandwidth
+controls.
 
 The optimized macOS binary measured approximately 808 KiB during development
 (shared OpenSSL/GC libraries are additional). The [benchmark results](BENCHMARKS.md)

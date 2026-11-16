@@ -592,6 +592,68 @@ fn test_respond_with_normalized_or_ipv6_host() ! {
 	assert receive(h.client).starts_with('HTTP/1.1 400')
 }
 
+fn test_respond_large_body_backpressure_and_keepalive() ! {
+	for size in [header_limit + 1, respond_body_limit] {
+		mut h := harness()!
+		defer { h.close() }
+		body := 'x'.repeat(size)
+		h.s.cfg = parse_config('http://localhost {\n respond "${body}"\n}')!
+		send_text(h.client, 'GET / HTTP/1.1\r\nHost: localhost\r\n\r\n')
+		mut response := ''
+		deadline := mono_ms() + 5000
+		for mono_ms() < deadline {
+			h.pump()!
+			assert h.c.to_client.len() <= buffer_limit
+			assert h.c.wire_output.len() <= buffer_limit
+			response += receive(h.client)
+			if response.contains('\r\n\r\n') && response.all_after('\r\n\r\n').len == size { break }
+		}
+		assert response.starts_with('HTTP/1.1 200')
+		assert response.contains('Content-Length: ${size}\r\n')
+		assert response.all_after('\r\n\r\n') == body
+		assert h.c.local_body == ''
+		send_text(h.client, 'HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n')
+		h.pump()!
+		head := receive(h.client)
+		assert head.starts_with('HTTP/1.1 200')
+		assert head.contains('Content-Length: ${size}\r\n')
+		assert head.ends_with('\r\n\r\n')
+		assert h.c.requests == 2
+		assert !h.c.dead
+	}
+}
+
+fn test_respond_placeholder_overflow_is_server_error() ! {
+	mut h := harness()!
+	defer { h.close() }
+	body := '{header.X-Fill}'.repeat(257)
+	h.s.cfg = parse_config('http://localhost {\n respond "${body}"\n}')!
+	send_text(h.client, 'GET / HTTP/1.1\r\nHost: localhost\r\nX-Fill: ${'x'.repeat(4096)}\r\n\r\n')
+	h.pump()!
+	response := receive(h.client)
+	assert response.starts_with('HTTP/1.1 500')
+	assert response.contains('Content-Length: 0\r\n')
+	assert h.c.local_body == ''
+}
+
+fn test_respond_closes_large_uploads_without_waiting_for_body() ! {
+	for headers in ['Content-Length: 2147483647', 'Transfer-Encoding: chunked',
+		'Content-Length: 2147483647\r\nExpect: 100-continue'] {
+		mut h := harness()!
+		defer { h.close() }
+		h.s.cfg = parse_config('http://localhost {\n respond ok\n}')!
+		send_text(h.client, 'POST / HTTP/1.1\r\nHost: localhost\r\n${headers}\r\n\r\n')
+		h.pump()!
+		response := receive(h.client)
+		assert response.starts_with('HTTP/1.1 200')
+		assert response.contains('Connection: close\r\n')
+		assert response.ends_with('\r\n\r\nok')
+		assert h.c.dead
+		assert h.c.request_buffer.len() <= buffer_limit
+		assert h.c.to_backend.len() == 0
+	}
+}
+
 fn test_port_only_requests_and_named_site_precedence() ! {
 	for host in ['localhost', '127.0.0.1:1234', '[::1]:1234', 'unknown.example', 'EXAMPLE.ORG.'] {
 		mut h := harness()!

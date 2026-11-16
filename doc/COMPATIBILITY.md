@@ -10,6 +10,7 @@ directives fail validation. It does not implement Caddy's full module ecosystem.
 | Matchers | `@name path /a /prefix/*`; inline exact/trailing-wildcard `handle` matchers; case-insensitive, unescaped, normalized path matching |
 | Routing | Mutually exclusive `handle` blocks, single-path specificity sorting, unmatched fallback |
 | Redirects | `redir [path or @matcher] target [3xx/401/permanent/temporary/html/placeholder]`; redirect-only sites and redirects inside `handle` |
+| Fixed responses | `respond [path or @matcher] body`, including inside `handle`; request placeholders, GET/HEAD and keep-alive. Templates and expanded bodies are capped at 1 MiB, unlike Caddy's uncapped responder. |
 | Rewriting | `rewrite * /target`, including `{uri}` and preserved query strings |
 | Headers | `header`, `request_header`, proxy `header_up`/`header_down`; set/append/delete, response defaults/defer, RE2 replacements, wildcard deletion, path and response conditions |
 | Proxy | One HTTP/HTTPS upstream per route, verified TLS, preserved HTTP Host (HTTPS uses the upstream Host), regenerated X-Forwarded-For/Host/Proto, hop-by-hop header removal |

@@ -24,6 +24,7 @@ import h2.settings
 from integration import free_port
 
 RANDOM = os.urandom(256 * 1024)
+RESPOND_BODY = 'fixed-response-' * 16384
 
 
 class Backend(http.server.BaseHTTPRequestHandler):
@@ -177,6 +178,7 @@ localhost {{
   output file "{root / 'access.jsonl'}"
  }}
  redir /redirect /target 308
+ respond /respond "{RESPOND_BODY}"
  handle /files/* {{
   root * "{root / 'public'}"
   file_server
@@ -230,6 +232,19 @@ def run(binary, engine):
                 Backend.release.set()
                 assert client.result(slow) == b'/held'
                 assert client.result(client.request('/large')) == b'x' * (1024 * 1024)
+                assert client.result(client.request('/respond')) == RESPOND_BODY.encode()
+                head = client.request('/respond', 'HEAD')
+                assert client.result(head) == b''
+                if engine == 'vaddy':
+                    assert dict(client.headers[head])['content-length'] == str(len(RESPOND_BODY))
+                    # Early local responses cancel large uploads without buffering them.
+                    posts = [client.request('/respond', 'POST', 2 * 1024**3, True) for _ in range(8)]
+                    for sid in posts:
+                        client.h2.send_data(sid, b'x' * 1024, end_stream=False)
+                    client.flush()
+                    for sid in posts:
+                        assert client.result(sid) == RESPOND_BODY.encode()
+                    assert client.result(client.request('/after-posts')) == b'/after-posts'
                 compressed = client.request('/large', headers=[('accept-encoding', 'gzip')])
                 assert gzip.decompress(client.result(compressed)) == b'x' * (1024 * 1024)
                 assert dict(client.headers[compressed])['content-encoding'] == 'gzip'
@@ -283,22 +298,24 @@ def run(binary, engine):
             finally:
                 client.sock.close()
             # A blocked stream must not consume another stream's window.
-            client = Client(port, root / 'cert.pem', 1024)
-            try:
-                blocked = client.request('/files/large.txt')
-                fast = client.request('/fast')
-                while fast not in client.ended:
-                    client.receive(acknowledge=False)
-                assert bytes(client.bodies[fast]) == b'/fast'
-                assert len(client.bodies.get(blocked, b'')) <= 1024
-                client.h2.reset_stream(blocked)
-                client.flush()
-            finally:
-                client.sock.close()
+            for path in ['/files/large.txt', '/respond']:
+                client = Client(port, root / 'cert.pem', 1024)
+                try:
+                    blocked = client.request(path)
+                    fast = client.request('/fast')
+                    while fast not in client.ended:
+                        client.receive(acknowledge=False)
+                    assert bytes(client.bodies[fast]) == b'/fast'
+                    assert len(client.bodies.get(blocked, b'')) <= 1024
+                    client.h2.reset_stream(blocked)
+                    client.flush()
+                finally:
+                    client.sock.close()
             # Small windows legitimately generate many WINDOW_UPDATE frames.
             client = Client(port, root / 'cert.pem', 1024)
             try:
                 assert client.result(client.request('/files/large.txt')) == RANDOM * 4
+                assert client.result(client.request('/respond')) == RESPOND_BODY.encode()
             finally:
                 client.sock.close()
             # HTTP/1 ALPN and clients without ALPN continue to work.

@@ -364,3 +364,39 @@ certificate tests. The timed workload is cleartext HTTP, not HTTPS. This is not
 standalone daemon memory, a real TCP benchmark, or a Caddy comparison. Run-to-run
 CPU and throughput variance is substantial; no production capacity claim is
 justified from these short samples.
+
+### MIME extension lookup, November 17, 2026
+
+The MIME implementation now lives in `src/mime`. Its generated CHD perfect hash
+uses the same 1,203 mappings as the previous binary search. Generation is handled
+by `tools/generate_mime.vsh`; no map is constructed at server startup. The
+word-window hash follows the local V MIME branch, with exact lowercase matching.
+
+Warm lookup measurements used V `e777ef4`, Clang and `-prod -gc boehm` on
+macOS arm64. Each variant passed 5,305 mapping/probe cases before measurement.
+Seven alternating runs per corpus used 3,000,000 lookups after 100,000 warmup
+lookups, with the same shuffled 2,048-entry corpora and checked result sums.
+
+| Corpus | Binary search, ns | Perfect hash, ns | Speedup |
+| --- | ---: | ---: | ---: |
+| Common web extensions | 124.96 | 12.42 | 10.1× |
+| All known extensions, repeated | 162.72 | 11.38 | 14.3× |
+| Unknown, 2–8 bytes | 175.05 | 10.75 | 16.3× |
+| Unknown, 8–24 bytes | 163.94 | 9.44 | 17.4× |
+| Web mix, approximately 90% hits | 127.49 | 12.88 | 9.9× |
+
+A simpler FNV-based CHD prototype took about 20–24 ns on common/hit/short-miss
+corpora and 37 ns on long misses, so the word-window implementation was selected.
+
+End-to-end measurements used the saved binary-search server and the final perfect-hash
+server, 512-byte files, HTTP/1.1, 32 clients, one worker, and seven alternating pairs
+with two-second measurements after a half-second warmup. Median paired throughput
+changes were +0.2% for HTML, −0.5% for a rare extension, and +0.8% for an unknown
+extension, with overlapping sample ranges. File and HTTP overhead dominate this
+workload; these results support the lookup speedup without a large throughput claim.
+
+The server executable shrank from 1,687,760 to
+1,671,328 bytes. AddressSanitizer checks, exhaustive
+mapping/miss tests, deterministic regeneration, and static-file/Caddy compatibility
+checks passed. Raw samples, binary hashes, flags and provenance are in
+[the measurement log](../tests/benchmark-mime-2026-11-17.json).

@@ -1,11 +1,14 @@
 # Third-party notices
 
-The extension-to-media-type table in `src/mime_data.v` is extracted from V's
+The extension-to-media-type table in `src/mime/data.v` is extracted from V's
 `vlib/net/http/mime/db.v`, revision `b7b4dd46eeb3d39cf8d3e8ef757093d872cbc230`.
 It preserves every extension mapping, including V's additions. Regenerate with
-`python3 tools/generate_mime.py .tools/v/vlib/net/http/mime/db.v`; the generated
+`v -gc none run tools/generate_mime.vsh .tools/v/vlib/net/http/mime/db.v`; the generated
 file records the source hash. V's copyright and MIT license are included in
 [licenses/V-MIT.txt](licenses/V-MIT.txt).
+The perfect-hash layout and word-window lookup are adapted from V's MIME
+branch, commits `3c137b83c9` and `c7a73a58bd`, using the pinned mappings above.
+
 V's table is generated from [jshttp/mime-db](https://github.com/jshttp/mime-db).
 Its MIT notice is included in [licenses/mime-db-MIT.txt](licenses/mime-db-MIT.txt).
 

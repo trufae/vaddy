@@ -1,5 +1,6 @@
 module main
 
+import src.caddyfile { Directive }
 import strconv
 
 struct EncodeConfig {

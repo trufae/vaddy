@@ -1,19 +1,20 @@
 module main
 
-import os
-import time
-import sync
-import sync.stdatomic
-import x.json2
 import crypto.rand as crypto_rand
 import encoding.hex
+import os
+import src.log
+import sync
+import sync.stdatomic
+import time
+import x.json2
 
 @[heap]
 struct Runtime {
 	id i64
 	cfg Config
 	backends map[string]Backend
-	logs map[string]&AccessLog
+	logs map[string]&log.Writer
 mut:
 	users i64
 }
@@ -49,11 +50,10 @@ fn prepare_runtime(cfg Config, id i64, log_mutex &sync.Mutex) !&Runtime {
 	// Even validation briefly opens log files; serialize it with rotations.
 	log_mutex.lock()
 	defer { log_mutex.unlock() }
-	logs := prepare_access_logs(cfg) or {
+	logs := log.prepare(cfg.log_configs(), log_mutex) or {
 		free_backends(backends)
 		return err
 	}
-	share_log_mutex(logs, log_mutex)
 	return &Runtime{id: id, cfg: cfg, backends: backends, logs: logs}
 }
 
@@ -74,7 +74,6 @@ fn release_runtime(mut c Connection) {
 
 fn destroy_runtime(runtime &Runtime) {
 	free_backends(runtime.backends)
-	close_access_logs(runtime.logs)
 }
 
 fn (mut s Server) reap_runtimes() {

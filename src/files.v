@@ -1,10 +1,11 @@
 module main
 
-import os
-import time
-import strconv
-import net.urllib
 import encoding.html
+import net.urllib
+import os
+import src.caddyfile { Directive }
+import strconv
+import time
 import x.json2
 
 struct FileConfig {

@@ -60,7 +60,7 @@ fn (mut frame Framing) consume_decoded(data []u8, mut output Buffer) !int {
 
 fn (mut s Server) close_h2_stream(mut parent Connection, id int) {
 	mut stream := parent.h2_streams[id] or { return }
-	s.log_access(mut stream, stream.h2_output_end)
+	stream.log_access()
 	stream.close_file()
 	stream.close_encoder()
 	release_runtime(mut stream)

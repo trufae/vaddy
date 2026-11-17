@@ -1,8 +1,10 @@
 module main
 
 import os
-import x.json2
+import src.log
+import sync
 import time
+import x.json2
 
 #include "@VMODROOT/tests/support.h"
 
@@ -469,14 +471,15 @@ fn test_custom_redirects_precedence_and_head() ! {
 }
 
 fn test_access_logs_once_per_request_and_aborted_response() ! {
+	mut mutex := sync.new_mutex()
+	defer { mutex.destroy() }
 	dir := os.join_path(os.temp_dir(), 'vaddy-log-${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
 	path := os.join_path(dir, 'access.jsonl')
 	mut h := harness()!
 	h.s.cfg = parse_config('http://localhost {\n log {\n output file "${path}"\n format json\n }\n redir /old /new 308\n reverse_proxy localhost:8001\n}')!
-	h.s.access_logs = prepare_access_logs(h.s.cfg)!
-	defer { close_access_logs(h.s.access_logs) }
+	h.s.access_logs = log.prepare(h.s.cfg.log_configs(), mutex)!
 	defer { h.close() }
 	for _ in 0 .. 2 {
 		send_text(h.client, 'GET /quoted?x="secret" HTTP/1.1\r\nHost: localhost\r\nAuthorization: secret\r\nCookie: private\r\n\r\n')
@@ -486,7 +489,7 @@ fn test_access_logs_once_per_request_and_aborted_response() ! {
 		h.pump()!
 		response := receive(h.client)
 		lines := os.read_lines(path)!
-		record := json2.decode[AccessRecord](lines.last())!
+		record := json2.decode[log.Record](lines.last())!
 		assert record.status == 200
 		assert record.size == 2
 		assert response.ends_with('ok')
@@ -502,7 +505,7 @@ fn test_access_logs_once_per_request_and_aborted_response() ! {
 	h.s.close_client(mut h.c)
 	lines := os.read_lines(path)!
 	assert lines.len == 3
-	record := json2.decode[AccessRecord](lines[2])!
+	record := json2.decode[log.Record](lines[2])!
 	assert record.status == 200 && record.size == 7
 	mut redirect := harness()!
 	defer { redirect.close() }
@@ -510,7 +513,7 @@ fn test_access_logs_once_per_request_and_aborted_response() ! {
 	redirect.s.access_logs = h.s.access_logs.clone()
 	send_text(redirect.client, 'GET /old HTTP/1.1\r\nHost: localhost\r\n\r\n')
 	redirect.pump()!
-	assert json2.decode[AccessRecord](os.read_lines(path)!.last())!.status == 308
+	assert json2.decode[log.Record](os.read_lines(path)!.last())!.status == 308
 }
 
 fn test_reload_retains_inflight_config_and_rolls_back_invalid_resources() ! {
@@ -539,7 +542,7 @@ fn test_reload_retains_inflight_config_and_rolls_back_invalid_resources() ! {
 	send_text(h.upstream, 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok')
 	h.pump()!
 	assert receive(h.client).contains('X-Generation: old\r\n')
-	assert json2.decode[AccessRecord](os.read_lines('${dir}/old.log')![0])!.request.uri == '/inflight'
+	assert json2.decode[log.Record](os.read_lines('${dir}/old.log')![0])!.request.uri == '/inflight'
 	assert old.users == 0
 	h.s.reap_runtimes()
 	assert h.s.retired.len == 0
@@ -547,7 +550,7 @@ fn test_reload_retains_inflight_config_and_rolls_back_invalid_resources() ! {
 	h.pump()!
 	response := receive(h.client)
 	assert response.starts_with('HTTP/1.1 307') && response.contains('X-Generation: new\r\n')
-	assert json2.decode[AccessRecord](os.read_lines('${dir}/new.log')![0])!.request.uri == '/next'
+	assert json2.decode[log.Record](os.read_lines('${dir}/new.log')![0])!.request.uri == '/next'
 }
 
 fn replace_config_for_test(mut s Server, input string) !bool {

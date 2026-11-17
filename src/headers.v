@@ -1,6 +1,8 @@
 module main
 
 import net.urllib
+import src.caddyfile { Directive }
+import src.regex
 import strings
 
 struct HeaderCondition {
@@ -102,20 +104,24 @@ fn parse_header_edit(args []string, nested bool, request bool) !HeaderEdit {
 	if request && action == `?` { return error('default headers are response-only') }
 	search := if args.len == 3 && action !in [u8(`+`), `-`, `?`] { args[1] } else { '' }
 	value := if args.len == 3 && action !in [u8(`+`), `-`, `?`] { args[2] } else if args.len >= 2 { args[1] } else { '' }
-	if search != '' && !search.contains('{') && C.vaddy_regex_valid(&char(search.str)) == 0 { return error('invalid regular expression') }
+	if search != '' && !search.contains('{') && !regex.valid(search) { return error('invalid regular expression') }
 	if invalid_controls(value, true) || value.len > header_limit { return error('invalid header value') }
 	return HeaderEdit{name: name, lower: lower, value: value, search: search, action: if args.len == 3 && action !in [u8(`+`), `-`, `?`] { u8(`r`) } else if action == `>` { u8(`=`) } else { action }, deferred: !request && action in [u8(`>`), `-`, `?`]}
 }
 
+fn take_header_matcher(mut args []string) HeaderEdit {
+	if args.len == 0 || (args[0] != '*' && !args[0].starts_with('/') && !args[0].starts_with('@')) { return HeaderEdit{} }
+	name := args[0]
+	args.delete(0)
+	return HeaderEdit{
+		matcher: if name.starts_with('@') { name } else { '' }
+		patterns: if name.starts_with('/') { [name] } else { []string{} }
+	}
+}
+
 fn parse_headers(d Directive, request bool) ![]HeaderEdit {
 	mut args := d.args[1..].clone()
-	mut matcher := ''
-	mut patterns := []string{}
-	if args.len > 0 && (args[0] == '*' || args[0].starts_with('/') || args[0].starts_with('@')) {
-		if args[0].starts_with('@') { matcher = args[0] }
-		else if args[0] != '*' { patterns = [args[0]] }
-		args.delete(0)
-	}
+	matcher := take_header_matcher(mut args)
 	mut result := []HeaderEdit{}
 	mut defaults := []HeaderEdit{}
 	mut deferred := false
@@ -153,9 +159,9 @@ fn parse_headers(d Directive, request bool) ![]HeaderEdit {
 	for i, edit in result {
 		if edit.action == `?` {
 			if conditions.any(it.name == edit.lower && it.values.len > 0) { return error('cannot match a default header on its value') }
-			defaults << HeaderEdit{...edit, group: '${d.line}:default:${i}', matcher: matcher, patterns: patterns, statuses: statuses, conditions: conditions}
+			defaults << HeaderEdit{...edit, group: '${d.line}:default:${i}', matcher: matcher.matcher, patterns: matcher.patterns, statuses: statuses, conditions: conditions}
 		} else {
-			primary << HeaderEdit{...edit, group: d.line.str(), deferred: deferred, matcher: matcher, patterns: patterns, statuses: statuses, conditions: conditions}
+			primary << HeaderEdit{...edit, group: d.line.str(), deferred: deferred, matcher: matcher.matcher, patterns: matcher.patterns, statuses: statuses, conditions: conditions}
 		}
 	}
 	primary << defaults
@@ -310,11 +316,11 @@ fn apply_header_group(mut fields []Field, edits []HeaderEdit, values HeaderValue
 				pattern := expand_header(edit.search, values)!
 				replacement := expand_header(edit.value, values)!
 				// Invalid dynamically expanded patterns leave values unchanged, as in Caddy.
-				if C.vaddy_regex_valid(&char(pattern.str)) == 0 { continue }
+				if !regex.valid(pattern) { continue }
 				for i, field in fields {
 					if field.lower != edit.lower && edit.lower != '*' { continue }
 					if protected_header(field.lower) { continue }
-					value := regex_replace(pattern, replacement, field.value)!
+					value := regex.replace(pattern, replacement, field.value, header_limit)!
 					fields[i] = Field{...field, value: value}
 				}
 				continue

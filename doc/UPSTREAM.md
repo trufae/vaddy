@@ -1,6 +1,6 @@
 # Upstream map: what we reimplemented, and what V/vlib should own
 
-Vaddy is a streaming reverse proxy: ~7.3k lines of V in a flat `src/`, plus
+Vaddy is a streaming reverse proxy: ~7.3k lines of V in `src/`, plus
 ~1.4k lines of C/C++ in headers. A large part of that C is *not* application
 logic — it is a replacement for things a server language should provide.
 
@@ -29,18 +29,18 @@ worth doing. **P2** = ergonomics/cleanup.
 | 2 | OpenSSL non-blocking adapter + ALPN | `platform.h` | `net.http` `-d use_openssl` (blocking, thread per conn) | upstream: `ssl` session API |
 | 3 | HTTP/2 over nghttp2, multiplexed, streaming | `http2.h`, `http2.c.v`, `http2.v` | `net/http/h2_server.v` **serial, 1 stream, 8 MiB buffered** | upstream: concurrent reactor h2 |
 | 4 | Streaming gzip/zstd encoder | `encode.h`, `encode.c.v` | `compress.gzip` (pure V, one-shot), `compress.zstd` (C, one-shot API) | upstream: streaming encoder |
-| 5 | gzip a file for log rotation | `log_writer.h` | nothing | falls out of #4 |
+| 5 | gzip a file for log rotation | `log/writer.h` | nothing | falls out of #4 |
 | 6 | `fstat` on the open fd | `files.h` | `os.Stat` stats the path, `os` has no `fstat` | upstream: `os.fstat` |
 | 7 | `flock`, atomic `rename`, signals, umask | `platform.h` | `os.rename` exists; no locking, no signal API | upstream: `os.lock_file` etc. |
-| 8 | RE2 (C++) regex | `regex.cc`, `regex.c.v` | `regex` (PCRE-syntax, buggy), `regex.pcre` (fast VM, no lookaround, replace = first match, `$1` only) | upstream: `regex.pcre` + Go-style replace |
+| 8 | RE2 (C++) regex | `regex/regex.cc`, `regex/regex.c.v` | `regex` (PCRE-syntax, buggy), `regex.pcre` (fast VM, no lookaround, replace = first match, `$1` only) | upstream: `regex.pcre` + Go-style replace |
 | 9 | `Buffer` with read cursor + storage swap | `http.v` | `strings.Builder` (no cursor, `str()` copies) | upstream: builder cursor/swap |
 | 10 | HTTP/1 incremental parser + framing | `http.v` | nothing resumable; `net/http/chunked.decode` is whole-buffer | keep ours (app-level), note API |
 | 11 | `[]Field` instead of `map[string][]string` | `http.v` | `http.Header` is a map | keep (ordering + case) |
 | 12 | token/control-char helpers, no `bytes()` | `http.v` | none; `string.bytes()` **copies** in the inventory baseline | upstream: borrowed `bytes()` |
-| 13 | duration parser | `log_writer.v` | `time.parse_duration` exists (vlang/v #29956) | **done**: only Caddy's `d` rewrite stays |
+| 13 | duration parser | `log/writer.v` | `time.parse_duration` exists (vlang/v #29956) | **done**: only Caddy's `d` rewrite stays |
 | 14 | MIME sorted const table | `mime.v`, `mime_data.v` | `mime.get_mime_type` = map lookup in a 15k-line map | upstream: sorted const + binsearch |
 | 15 | multi-range file bodies, chunked pump | `files.v` | `fasthttp` sendfile (whole file only) | keep ours |
-| 16 | JSON log records via encode→decode→encode | `log_format.v` | `json2` has no ordered/dynamic object writer | upstream: `json2` encoder API |
+| 16 | JSON log records via encode→decode→encode | `log/format.v` | `json2` has no ordered/dynamic object writer | upstream: `json2` encoder API |
 | 17 | reactor wakeup for worker channels | `workers.v` | no chan-with-fd | upstream: fd-backed chan |
 | 18 | atomic counters | `sync.stdatomic` | fine | — |
 
@@ -150,7 +150,7 @@ chunk/SSE boundaries and a hard bound on the output.
 `finish()`. Zero allocation per call, no `Buffer` growth. gzip is P0 (pure V is
 not competitive); zstd is mostly an API-shape change.
 
-### 1.5 `vaddy_gzip_file` — `src/log_writer.h`
+### 1.5 `vaddy_gzip_file` — `src/log/writer.h`
 20 lines: open file → `gzwrite` loop → `gzclose`, for rotated log backups.
 **Why**: same as #1.4 — nothing to call with bounded memory.
 **Verdict**: P2, deleted for free once #1.4 exists.
@@ -185,7 +185,7 @@ documented as async-safe), and `os.set_umask(mode)`. P1 for locking, P2 rest.
 
 ## 2. Regex from C++ — why, and how to kill it
 
-**What we do**: `src/regex.cc` (C++17, `#pkgconfig re2`, compiled to
+**What we do**: `src/regex/regex.cc` (C++17, `#pkgconfig re2`, compiled to
 `.build/regex.o`, linked with `#flag`). Two entry points:
 `vaddy_regex_valid(pattern)` and `vaddy_regex_replace(pattern, repl, input, out, cap)`.
 The replace implements *Go `regexp`* semantics, because that is what Caddy uses:
@@ -218,7 +218,7 @@ P1 to get out of it.
 **Upstream path, cheapest first**:
 1. `regex.pcre`: add `replace_all(text, repl)` with Go substitution
    (`$name`, `${name}`, `$$`, unmatched → empty) and a clear
-   `lookaround_unsupported` compile error. `src/headers_test.v` already encodes
+   `lookaround_unsupported` compile error. `src/regex/regex_test.v` already encodes
    the exact expectations (7 assertions) — a ready-made upstream test file.
 2. `regex.pcre`: expose compile errors properly, and add a `Machine`-reuse /
    `find_all_into(mut []Match)` path so callers can stay allocation-free.
@@ -298,8 +298,8 @@ under the hood) or add `string.byte_at(i)`. Then these helpers collapse into
 one-liners. **Highest-leverage language change on this list** — it silently
 taxes every V program that validates text. P0.
 
-### 3.5 `log_duration` — `src/log_writer.v` — **resolved**
-`log_duration` uses `time.parse_duration` from vlib. It only converts Caddy's
+### 3.5 `log.parse_duration` — `src/log/writer.v` — **resolved**
+`log.parse_duration` uses `time.parse_duration` from vlib. It only converts Caddy's
 `d` unit to hours (including compound forms such as `1d30m`) and rejects
 negative durations for log rotation. No local duration parser is needed.
 
@@ -317,7 +317,7 @@ implement `mime.lookup(ext)` as binary search (our `file_mime_type` is 12 lines
 and lifts verbatim). Then we `import net.http.mime` and delete 1211 lines plus a
 code generator. **Cleanest PR on this list.** P1.
 
-### 3.7 Log rotation — `src/log_writer.v`
+### 3.7 Log rotation — `src/log/writer.v`
 Size/interval rotation, timestamped backups with collision probing, prune by
 count/age, reopen-per-write so Windows renames don't fail.
 
@@ -333,8 +333,8 @@ from the open file into the output queue with backpressure.
 whole file but can't serve our multi-range/multipart case, and no
 `os.File.read_into(mut []u8)` helper exists. P2.
 
-### 3.9 JSON access records — `encode_access_record` (`src/log_format.v`)
-Encodes `AccessRecord` → JSON string, **decodes it back to
+### 3.9 JSON access records — `log.encode` (`src/log/format.v`)
+Encodes `log.Record` → JSON string, **decodes it back to
 `map[string]json2.Any`**, merges format fields and extras, then re-encodes.
 Two full round trips per log line.
 
@@ -381,9 +381,9 @@ Document these as intentional so nobody "cleans them up" later:
 
 ## 5. Proposed module layout (kills the flat `src/`)
 
-V requires one module per directory and **forbids import cycles**. Today
-everything is `module main`, so `http2.v` cannot `import` `http.v`, and
-`headers.v` reaches into `Connection`. Layering, bottom-up:
+V requires one module per directory and **forbids import cycles**. Logging,
+Caddyfile syntax and RE2 now have separate modules; HTTP and server code
+still share `module main`. Remaining layering, bottom-up:
 
 ```
 src/main.v                    module main     cli(), main(), wiring
@@ -393,26 +393,27 @@ src/core/                     module core     imports no vaddy module
     validate.v                is_token, invalid_controls, all_digits
 src/httpio/                   module httpio   imports core
     message.v, parse.v, framing.v       (http.v minus Buffer)
-src/regex/                    module regex    imports core (or nothing)
-    re2.c.v, re2.cc, re2.h              (src/regex.*)
+src/regex/                    module regex    imports no vaddy module
+    regex.c.v, regex.cc, regex.h
 src/tls/                      module tls      imports core
     session.c.v               OpenSSL half of platform.h
 src/h2/                       module h2       imports core
     conn.c.v, conn.h, streams.v, glue.v (src/http2.*)
 src/compress/                 module compress imports core
     encoder.c.v, encoder.h              (src/encode.c.v + encode.h)
-src/config/                   module config   imports core, regex, mime
-    caddyfile.v (tokenize/parse_nodes/Cursor)
-    config.v    (Directive/Route/Site/Config)
+src/caddyfile/                module caddyfile parser.v (Directive/tokenizer/parser)
+src/log/                      module log       config.v, access.v, format.v, writer.*
+src/config/                   module config   imports core, caddyfile, log, regex, mime
+    config.v    (Route/Site/Config)
     headers.v   (HeaderEdit + expansion)
-    encode.v, redirect.v, log_config.v, files_config.v
+    encode.v, redirect.v, log_rules.v, files_config.v
     mime.v, mime_data.v, upstream.v
 src/files/                    module files    imports core, httpio, config
     serve.v, ranges.v, browse.v         (files.v, split by concern)
 src/server/                   module server   imports everything above
     connection.v, reactor.v (serve_events/accept/tick), workers.v,
     respond.v, forward.v, h2_streams.v, apply_headers.v,
-    access_log.v, log_format.v, log_writer.v, reload.v, acme.v
+    access_log.v (HTTP adapters), reload.v, acme.v
 ```
 
 Caveats to resolve *before* starting:
@@ -426,8 +427,8 @@ Caveats to resolve *before* starting:
 - `EncodeConfig`/`EncodedOutput` hold `&C.vaddy_encoder` and `Buffer`, and are
   read by `server`. Keep the plain config struct in `config`; move the streaming
   state machine (`prepare_output`, the encode step) into `server`.
-- `regex_replace` is needed by `config` (validate) and `server` (log filters) →
-  a leaf `regex` module is the only clean answer.
+- `regex.valid` and `regex.replace` are shared by headers and log filters
+  through the existing leaf `regex` module.
 - `module main` must stay in the root; `v src -o vaddy` still works. Only the
   `Makefile`/CI patterns change (`src/*.v` → `src`).
 - `core` will absorb most `C.` declarations. That is fine — it is the platform
@@ -438,11 +439,11 @@ Caveats to resolve *before* starting:
 Migration order (each step compiles and passes `make test`):
 
 1. `core`: `Buffer`, `mono_ms`, `platform.c.v`, validate helpers. Biggest import
-   ripple — do it first, while everything is still `module main`.
+   ripple — HTTP and server code still share `module main`.
 2. `httpio`: `http.v` minus `Buffer`.
-3. `regex`: the three `regex.*` files, unchanged.
+3. `regex`: already extracted, with validation and bounded replacement.
 4. `tls`, `h2`, `compress`: pure C-binding files, mechanical.
-5. `config`: split caddyfile parsing / model / matchers / per-directive parsers.
+5. `config`: syntax already extracted; split model / matchers / directive parsers.
 6. `server`: split reactor / connection / forwarding / logging / acme.
 7. `files`: split out of the server once `Connection` lives in its own module.
 
@@ -480,11 +481,11 @@ Items 9–10 are the ones that would let a V-native server stop writing C at all
 - [ ] §3.4 measure borrowed `string.bytes()` — then simplify `is_token`,
       `invalid_controls` and the header scans
 - [ ] §3.1 measure `strings.Builder` with read cursor + `swap`
-- [ ] §3.9 `json2` encoder API, rewrite `encode_access_record`
-- [x] §3.5 `log_duration` delegates to `time.parse_duration`; only Caddy's `d`
+- [ ] §3.9 `json2` encoder API, rewrite `log.encode`
+- [x] §3.5 `log.parse_duration` delegates to `time.parse_duration`; only Caddy's `d`
       rewrite remains
 - [x] Use V from git only; remove the release compatibility workflow
-- [ ] §1.4 streaming encoder, then delete `encode.h` + `log_writer.h`
+- [ ] §1.4 streaming encoder, then delete `encode.h` + `log/writer.h`
 - [ ] §1.1 make `picoev` core public (`loop_once`, per-fd data, no HTTP), then
       delete the event-loop half of `platform*.h`
 - [ ] §1.3 concurrent h2 server, then delete `http2.h`

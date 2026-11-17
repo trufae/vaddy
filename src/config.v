@@ -1,17 +1,9 @@
 module main
 
+import arrays
 import net.urllib
-
-struct Directive {
-	args     []string
-	children []Directive
-	line     int
-}
-
-struct Token {
-	text string
-	line int
-}
+import src.caddyfile { Directive }
+import src.log
 
 struct Route {
 mut:
@@ -39,7 +31,7 @@ struct Site {
 mut:
 	root string = '.'
 	encode EncodeConfig
-	logs []LogConfig
+	logs []log.Config
 	log_rules []LogRule
 	hosts          []string
 	plain          bool
@@ -60,83 +52,6 @@ mut:
 	https_port int = 443
 	email      string
 	acme_ca    string = 'https://acme-v02.api.letsencrypt.org/directory'
-}
-
-fn tokenize(input string) ![]Token {
-	mut tokens := []Token{}
-	mut i := 0
-	mut line := 1
-	for i < input.len {
-		c := input[i]
-		if c == `\n` {
-			tokens << Token{'\n', line}
-			line++
-			i++
-			continue
-		}
-		if c in [u8(` `), `\t`, `\r`] {
-			i++
-			continue
-		}
-		if c == `#` {
-			for i < input.len && input[i] != `\n` { i++ }
-			continue
-		}
-		start := i
-		if c == `"` {
-			i++
-			mut value := []u8{}
-			for i < input.len && input[i] != `"` {
-				if input[i] == `\n` { return error('line ${line}: newline in quoted token') }
-				if input[i] == `\\` && i + 1 < input.len && input[i + 1] == `"` { i++ }
-				value << input[i]
-				i++
-			}
-			if i == input.len { return error('line ${line}: unterminated quote') }
-			i++
-			tokens << Token{value.bytestr(), line}
-		} else {
-			for i < input.len && input[i] !in [u8(` `), `\t`, `\r`, `\n`] { i++ }
-			tokens << Token{input[start..i], line}
-		}
-	}
-	return tokens
-}
-
-struct Cursor {
-mut:
-	pos int
-}
-
-fn parse_nodes(tokens []Token, mut cursor Cursor, nested bool) ![]Directive {
-	mut nodes := []Directive{}
-	for cursor.pos < tokens.len {
-		if tokens[cursor.pos].text == '\n' {
-			cursor.pos++
-			continue
-		}
-		if tokens[cursor.pos].text == '}' {
-			if !nested { return error('line ${tokens[cursor.pos].line}: unexpected }') }
-			cursor.pos++
-			return nodes
-		}
-		line := tokens[cursor.pos].line
-		mut args := []string{}
-		for cursor.pos < tokens.len && tokens[cursor.pos].text !in ['\n', '{', '}'] {
-			args << tokens[cursor.pos].text
-			cursor.pos++
-		}
-		mut children := []Directive{}
-		if cursor.pos < tokens.len && tokens[cursor.pos].text == '{' {
-			cursor.pos++
-			children = parse_nodes(tokens, mut cursor, true)!
-		} else if args.len == 0 {
-			return error('line ${line}: expected directive')
-		}
-		nodes << Directive{args, children, line}
-	}
-	if nested { return error('missing closing }') }
-	return nodes
 }
 
 fn valid_host(host string) bool {
@@ -310,9 +225,7 @@ fn route_before(a Route, b Route) bool {
 }
 
 fn parse_config(input string) !Config {
-	tokens := tokenize(input)!
-	mut cursor := Cursor{}
-	nodes := parse_nodes(tokens, mut cursor, false)!
+	nodes := caddyfile.parse(input)!
 	mut cfg := Config{}
 	mut hosts := map[string]bool{}
 	mut log_count := 0
@@ -389,7 +302,7 @@ fn parse_config(input string) !Config {
 					site.encode = parse_encode(child)!
 				}
 				'log' {
-					mut log_config := parse_access_log(child)!
+					mut log_config := log.parse(child)!
 					custom := child.children.any(it.args.len > 0 && it.args[0] !in ['no_hostname', 'hostnames'])
 					log_config.name = if child.args.len == 2 { child.args[1] } else if custom { 'log${log_count}' } else { '' }
 					site.logs << log_config
@@ -570,4 +483,38 @@ fn rewrite_uri(uri string, target string) string {
 	if target.contains('{uri}') { return target.replace('{uri}', uri) }
 	if target.contains('?') || !uri.contains('?') { return target }
 	return target + '?' + uri.all_after('?')
+}
+
+struct LogRule {
+mut:
+	kind string
+	args []string
+	match HeaderEdit
+}
+
+fn parse_log_rule(d Directive) !LogRule {
+	if d.children.len > 0 { return error('log request directives do not accept blocks') }
+	mut args := d.args[1..].clone()
+	matcher := take_header_matcher(mut args)
+	kind := d.args[0]
+	match kind {
+		'log_skip', 'skip_log' { if args.len != 0 { return error('log_skip accepts only a matcher') } }
+		'log_level' { if args.len != 1 { return error('expected log_level [matcher] LEVEL') }; log.level(args[0])! }
+		'log_append' { if args.len != 2 || args[0].trim_string_left('<') == '' { return error('expected log_append [matcher] KEY VALUE') } }
+		'log_name' { if args.len == 0 { return error('expected log_name [matcher] NAME...') } }
+		else { return error('unknown log request directive') }
+	}
+	return LogRule{kind, args, matcher}
+}
+
+fn resolve_log_rules(mut rules []LogRule, matchers map[string][]string) ! {
+	for mut rule in rules {
+		mut headers := [rule.match]
+		resolve_header_matchers(mut headers, matchers)!
+		rule.match = headers[0]
+	}
+}
+
+fn (cfg Config) log_configs() []log.Config {
+	return arrays.flatten(cfg.sites.map(it.logs))
 }

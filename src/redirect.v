@@ -1,6 +1,7 @@
 module main
 
 import net.http
+import src.caddyfile { Directive }
 
 fn parse_redirect(d Directive) !Route {
 	if d.children.len > 0 || d.args.len < 2 || d.args.len > 4 { return error('expected redir [matcher] target [code]') }

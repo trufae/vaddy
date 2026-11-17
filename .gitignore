@@ -10,8 +10,8 @@
 /raddy/
 /benchmark-results.json
 /benchmark-workers.json
-/src/*_test
-/src/*_test.exe
+/src/**/*_test
+/src/**/*_test.exe
 /tests/__pycache__/
 /.vaddy-data/
 

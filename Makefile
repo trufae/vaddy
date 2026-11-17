@@ -29,11 +29,11 @@ endif
 .PHONY: all test integration http2 encode files compatibility bench bench-workers caddy-bench raddy-bench compare alpine alpine-x86_64 fmt clean install
 all: $(TARGET)
 
-.build/regex.o: src/regex.cc src/regex.h
+.build/regex.o: src/regex/regex.cc src/regex/regex.h
 	mkdir -p .build
-	$(CXX) -std=c++17 -O2 $(shell pkg-config --cflags re2) -c src/regex.cc -o $@
+	$(CXX) -std=c++17 -O2 $(shell pkg-config --cflags re2) -c src/regex/regex.cc -o $@
 
-$(TARGET): .build/regex.o $(wildcard src/*.v) $(wildcard src/*.h) v.mod Makefile
+$(TARGET): .build/regex.o $(wildcard src/*.v src/*/*.v src/*.h src/*/*.h) v.mod Makefile
 	$(VPLATFORMENV) $(V) $(VFLAGS) -d use_openssl -o $@ src
 
 test: .build/regex.o

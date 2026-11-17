@@ -516,6 +516,28 @@ fn test_access_logs_once_per_request_and_aborted_response() ! {
 	assert json2.decode[log.Record](os.read_lines(path)!.last())!.status == 308
 }
 
+fn test_access_log_outputs_share_append_values_without_mutating_config() ! {
+	mut mutex := sync.new_mutex()
+	defer { mutex.destroy() }
+	dir := os.join_path(os.temp_dir(), 'vaddy-log-outputs-${os.getpid()}')
+	defer { os.rmdir_all(dir) or {} }
+	mut h := harness()!
+	defer { h.close() }
+	h.s.cfg = parse_config('http://localhost {\n log first {\n output file "${dir}/first.log"\n format append {\n fields {\n first_only true\n }\n }\n }\n log second {\n output file "${dir}/second.log"\n }\n log_append <token {query.token}\n log_append scope site\n handle {\n log_append scope route\n redir * /new\n }\n}')!
+	h.s.access_logs = log.prepare(h.s.cfg.log_configs(), mutex)!
+	for token in ['one', 'two'] {
+		send_text(h.client, 'GET /?token=${token} HTTP/1.1\r\nHost: localhost\r\n\r\n')
+		h.pump()!
+		assert receive(h.client).starts_with('HTTP/1.1 302')
+		for name in ['first', 'second'] {
+			record := json2.decode[map[string]json2.Any](os.read_lines('${dir}/${name}.log')!.last())!
+			assert record['token']!.str() == token
+			assert record['scope']!.str() == 'site'
+			assert ('first_only' in record) == (name == 'first')
+		}
+	}
+}
+
 fn test_reload_retains_inflight_config_and_rolls_back_invalid_resources() ! {
 	dir := os.join_path(os.temp_dir(), 'vaddy-reload-${os.getpid()}')
 	os.mkdir_all(dir)!

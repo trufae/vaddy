@@ -14,7 +14,7 @@ struct Filter {
 	actions []Directive
 }
 
-pub struct Format {
+struct Format {
 mut:
 	kind string = 'json'
 	filters []Filter
@@ -72,7 +72,7 @@ fn parse_format(d Directive) !Format {
 fn parse_filter(d Directive) !Filter {
 	if d.args.len < 2 { return error('expected log field filter') }
 	kind := d.args[1]
-	args := d.args[2..].clone()
+	args := d.args[2..]
 	match kind {
 		'delete', 'hash' { if args.len != 0 || d.children.len > 0 { return error('unexpected filter arguments') } }
 		'replace', 'rename' { if args.len != 1 || d.children.len > 0 { return error('expected filter value') } }
@@ -91,7 +91,7 @@ fn parse_filter(d Directive) !Filter {
 	return Filter{d.args[0].split('>'), kind, args, d.children}
 }
 
-fn filter_string(value string, filter Filter) !string {
+fn filter_string(value string, filter &Filter) !string {
 	match filter.kind {
 		'hash' { return sha256.hexhash(value)[..8] }
 		'regexp' { return regex.replace(filter.args[0], filter.args[1], value, 16384)! }
@@ -134,7 +134,7 @@ fn filter_string(value string, filter Filter) !string {
 	}
 }
 
-fn filter_value(value json2.Any, filter Filter) !json2.Any {
+fn filter_value(value json2.Any, filter &Filter) !json2.Any {
 	if filter.kind == 'replace' { return filter.args[0] }
 	if value is string { return filter_string(value, filter)! }
 	if value is []json2.Any {
@@ -151,7 +151,7 @@ fn filter_value(value json2.Any, filter Filter) !json2.Any {
 	return value
 }
 
-fn apply_filter(value json2.Any, filter Filter, depth int) !json2.Any {
+fn apply_filter(value json2.Any, filter &Filter, depth int) !json2.Any {
 	if value is map[string]json2.Any {
 		mut result := map[string]json2.Any{}
 		for key, item in value {
@@ -166,8 +166,9 @@ fn apply_filter(value json2.Any, filter Filter, depth int) !json2.Any {
 	return value
 }
 
-pub fn encode(record Record, format Format, extra map[string]json2.Any) !string {
-	if format == Format{} && extra.len == 0 { return json2.encode(record, escape_unicode: true) }
+pub fn (config &Config) encode(record &Record, extra map[string]json2.Any) !string {
+	format := &config.format
+	if *format == Format{} && extra.len == 0 { return json2.encode(record, escape_unicode: true) }
 	mut fields := json2.decode[map[string]json2.Any](json2.encode(record))!
 	for key, value in format.fields { fields[key] = value }
 	for key, value in extra { fields[key] = value }
@@ -192,7 +193,7 @@ pub fn encode(record Record, format Format, extra map[string]json2.Any) !string 
 		color := match record.level { 'debug' { '35' } 'warn' { '33' } 'error' { '31' } else { '34' } }
 		fields['level'] = '\x1b[${color}m${record.level.to_upper()}\x1b[0m'
 	}
-	for filter in format.filters { fields = apply_filter(fields, filter, 0)!.as_map() }
+	for filter in &format.filters { fields = apply_filter(fields, filter, 0)!.as_map() }
 	if format.kind == 'console' {
 		mut parts := []string{}
 		for key in ['ts', 'level', 'logger', 'msg'] { if value := fields[key] { parts << value.str(); fields.delete(key) } }

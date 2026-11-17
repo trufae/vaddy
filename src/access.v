@@ -44,46 +44,50 @@ fn (mut c Connection) log_access() {
 	if c.access_targets.len == 0 || c.access_logged || !c.have_request { return }
 	c.access_logged = true
 	mut level := if c.log_status >= 500 { 3 } else { 1 }
-	for rule in c.log_rules {
+	for rule in &c.log_rules {
 		if !header_edit_matches(rule.match, [], c.header_values, 0) { continue }
 		if rule.kind in ['log_skip', 'skip_log'] { return }
 		if rule.kind == 'log_level' { level = log.level(rule.args[0]) or { level } }
 	}
+	if !c.access_targets.any(level >= it.config.level) { return }
 	mut response_headers := log_headers(c.log_response_fields)
 	if c.log_empty_content_type && 'Content-Type' !in response_headers { response_headers['Content-Type'] = []string{} }
+	// Final logging consumes the early fields once for all outputs.
+	mut extra := c.log_early.move()
+	// Deferred append handlers unwind in reverse order.
+	for i := c.log_rules.len - 1; i >= 0; i-- {
+		rule := &c.log_rules[i]
+		if rule.kind == 'log_append' && !rule.args[0].starts_with('<') && header_edit_matches(rule.match, [], c.header_values, 0) {
+			extra[rule.args[0].trim_string_left('<')] = log_append_value(rule.args[1], c.header_values)
+		}
+	}
+	request := request_log(c)
 	for target in c.access_targets {
 		if level < target.config.level { continue }
 		record := log.Record{
 			level: ['debug', 'info', 'warn', 'error'][level]
 			ts: f64(time.now().unix_nano()) / 1e9
 			logger: 'http.log.access' + if target.config.name == '' { '' } else { '.' + target.config.name }
-			request: request_log(c)
+			request: request
 			bytes_read: c.log_bytes_read
 			duration: f64(time.sys_mono_now() - c.log_started) / 1e9
 			size: c.log_size
 			status: c.log_status
 			resp_headers: response_headers
 		}
-		mut extra := c.log_early.clone()
-		// Deferred append handlers unwind in reverse order.
-		for rule in c.log_rules.reverse() {
-			if rule.kind == 'log_append' && !rule.args[0].starts_with('<') && header_edit_matches(rule.match, [], c.header_values, 0) {
-				extra[rule.args[0].trim_string_left('<')] = log_append_value(rule.args[1], c.header_values)
-			}
-		}
-		line := log.encode(record, target.config.format, extra) or { eprintln('vaddy: log encoding failed: ${err}'); continue }
+		line := target.config.encode(record, extra) or { eprintln('vaddy: log encoding failed: ${err}'); continue }
 		mut logger := target.writer
 		logger.write_line(line) or { eprintln('vaddy: access log write failed: ${err}') }
 	}
 }
 
-fn access_targets(cfg Config, site Site, writers map[string]&log.Writer, rules []LogRule, values HeaderValues) []log.Target {
+fn access_targets(cfg &Config, site &Site, writers map[string]&log.Writer, rules []LogRule, values HeaderValues) []log.Target {
 	mut names := []string{}
-	for rule in rules {
-		if rule.kind == 'log_name' && header_edit_matches(rule.match, [], values, 0) { names = rule.args.clone() }
+	for rule in &rules {
+		if rule.kind == 'log_name' && header_edit_matches(rule.match, [], values, 0) { names = rule.args }
 	}
 	mut targets := []log.Target{}
-	for candidate in cfg.sites {
+	for candidate in &cfg.sites {
 		for config in candidate.logs {
 			if !config.matches(names, values.host, candidate.hosts == site.hosts) { continue }
 			if writer := writers[config.output.output] { targets << log.Target{config, writer} }
@@ -92,7 +96,7 @@ fn access_targets(cfg Config, site Site, writers map[string]&log.Writer, rules [
 	return targets
 }
 
-fn log_append_value(value string, values HeaderValues) json2.Any {
+fn log_append_value(value string, values &HeaderValues) json2.Any {
 	if value.starts_with('{') && value.ends_with('}') && value.count('{') == 1 {
 		return placeholder_value(value[1..value.len - 1], values) or { return json2.null }
 	}
@@ -100,7 +104,7 @@ fn log_append_value(value string, values HeaderValues) json2.Any {
 }
 
 fn (mut c Connection) capture_early_logs(rules []LogRule) {
-	for rule in rules {
+	for rule in &rules {
 		if rule.kind == 'log_append' && rule.args[0].starts_with('<') && header_edit_matches(rule.match, [], c.header_values, 0) {
 			value := rule.args[1]
 			c.log_early[rule.args[0][1..]] = if value.starts_with('{http.response.') { json2.Any(json2.null) } else { log_append_value(value, c.header_values) }

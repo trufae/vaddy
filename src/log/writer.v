@@ -7,8 +7,8 @@ import strconv
 import sync
 import time
 
-pub struct Options {
-pub mut:
+struct Options {
+pub:
 	output string = 'stderr'
 mut:
 	roll_disabled bool
@@ -66,13 +66,12 @@ fn parse_mode(value string) !int {
 	return int(strconv.parse_int(value, 8, 32)!)
 }
 
-fn parse_output(d Directive, mut opts Options) ! {
+fn parse_output(d Directive) !Options {
 	if d.args.len == 2 && d.args[1] in ['stdout', 'stderr', 'discard'] && d.children.len == 0 {
-		opts.output = d.args[1]
-		return
+		return Options{output: d.args[1]}
 	}
 	if d.args.len != 3 || d.args[1] != 'file' || d.args[2] == '' { return error('expected output stdout, stderr, discard or file PATH') }
-	opts.output = 'file:' + os.abs_path(d.args[2])
+	mut opts := Options{output: 'file:' + os.abs_path(d.args[2])}
 	mut seen := map[string]bool{}
 	for child in d.children {
 		if child.args.len == 0 || child.children.len > 0 { return error('invalid file log option') }
@@ -111,9 +110,10 @@ fn parse_output(d Directive, mut opts Options) ! {
 		}
 	}
 	if 'roll_compression' in seen { opts.compress = d.children.filter(it.args[0] == 'roll_compression')[0].args[1] == 'gzip' }
+	return opts
 }
 
-fn open_file(opts Options) !os.File {
+fn open_file(opts &Options) !os.File {
 	path := opts.output.trim_string_left('file:')
 	os.mkdir_all(os.dir(path), mode: u32(opts.dir_mode))!
 	mut file := os.open_file(path, 'a', opts.mode)!
@@ -123,7 +123,7 @@ fn open_file(opts Options) !os.File {
 	return file
 }
 
-fn prune_backups(path string, opts Options) ! {
+fn prune_backups(path string, opts &Options) ! {
 	ext := os.file_ext(path)
 	base := os.file_name(path).trim_string_right(ext)
 	mut names := []string{}
@@ -196,21 +196,21 @@ fn (mut logger Writer) rotate(mut file os.File, size i64) ! {
 	prune_backups(path, opts) or { eprintln('vaddy: log retention failed: ${err}') }
 }
 
-@[heap]
+@[heap; noinit]
 pub struct Writer {
-mut:
 	mutex &sync.Mutex
-	options Options
+	options &Options
+mut:
 	opened i64
 }
 
-pub fn prepare(configs []Config, mutex &sync.Mutex) !map[string]&Writer {
+pub fn prepare(configs []&Config, mutex &sync.Mutex) !map[string]&Writer {
 	mut logs := map[string]&Writer{}
 	for config in configs {
 		output := config.output.output
 		if output == '' { continue }
 		if previous := logs[output] {
-			if previous.options != config.output { return error('conflicting options for shared log output') }
+			if *previous.options != config.output { return error('conflicting options for shared log output') }
 			continue
 		}
 		// Validate without retaining a handle that blocks Windows rotations.
@@ -218,7 +218,7 @@ pub fn prepare(configs []Config, mutex &sync.Mutex) !map[string]&Writer {
 			mut file := open_file(config.output)!
 			file.close()
 		}
-		logs[output] = &Writer{mutex: mutex, options: config.output, opened: time.sys_mono_now()}
+		logs[output] = &Writer{mutex: mutex, options: &config.output, opened: time.sys_mono_now()}
 	}
 	return logs
 }

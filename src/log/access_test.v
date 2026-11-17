@@ -11,15 +11,14 @@ fn test_log_rotation_compression_retention_and_reload_writers() ! {
 	defer { mutex.destroy() }
 	dir := os.join_path(os.temp_dir(), 'vaddy-rotate-${os.getpid()}')
 	defer { os.rmdir_all(dir) or {} }
-	config := parse(caddyfile.parse('log {\n output file "${dir}/nested/access.log" {\n roll_size 1KiB\n roll_keep 2\n roll_keep_for 1d\n }\n}')![0])!
-	assert config.output.roll_size == 1048576
+	parsed := parse(caddyfile.parse('log {\n output file "${dir}/nested/access.log" {\n roll_size 1KiB\n roll_keep 2\n roll_keep_for 1d\n }\n}')![0], '')!
+	assert parsed.output.roll_size == 1048576
+	config := &Config{...parsed, output: Options{...parsed.output, roll_size: 1024}}
 	mut logs := prepare([config], mutex)!
 	mut logger := logs[config.output.output]!
-	logger.options.roll_size = 1024
 	// A second generation's writer must follow rotations from the first.
 	old_logs := prepare([config], mutex)!
 	mut old := old_logs[config.output.output]!
-	old.options.roll_size = 1024
 	os.write_file('${dir}/nested/access-not-a-rotation.log.gz', 'unrelated')!
 	for i in 0 .. 20 {
 		logger.write_line('${i}: ' + 'x'.repeat(400))!
@@ -40,7 +39,7 @@ fn test_log_output_validation_and_disabled_rotation() ! {
 	assert parse_size('1.1MiB')! == 2 * 1048576
 	assert parse_duration('1.5d')! == 36 * time.hour
 	for option in ['roll_size -1', 'mode 888', 'roll_keep nope', 'roll_keep_for -1h', 'roll_compression invalid'] {
-		if _ := parse(caddyfile.parse('log {\n output file /unused {\n ${option}\n }\n}')![0]) { assert false, option }
+		if _ := parse(caddyfile.parse('log {\n output file /unused {\n ${option}\n }\n}')![0], '') { assert false, option }
 	}
 }
 
@@ -77,10 +76,9 @@ fn test_log_file_replacement_between_writes() ! {
 	dir := os.join_path(os.temp_dir(), 'vaddy-log-replace-${os.getpid()}')
 	defer { os.rmdir_all(dir) or {} }
 	path := os.join_path(dir, 'access.log')
-	config := Config{output: Options{output: 'file:' + path}}
+	config := &Config{output: Options{output: 'file:' + path, roll_size: 64}}
 	logs := prepare([config], mutex)!
 	mut logger := logs[config.output.output]!
-	logger.options.roll_size = 64
 	// Preparation, successful writes and rejected writes must all allow an
 	// external rotation, including on Windows where open handles block renames.
 	os.rename(path, path + '.prepared')!

@@ -1,6 +1,5 @@
 module main
 
-import arrays
 import net.urllib
 import src.caddyfile { Directive }
 import src.log
@@ -31,7 +30,7 @@ struct Site {
 mut:
 	root string = '.'
 	encode EncodeConfig
-	logs []log.Config
+	logs []&log.Config
 	log_rules []LogRule
 	hosts          []string
 	plain          bool
@@ -302,11 +301,9 @@ fn parse_config(input string) !Config {
 					site.encode = parse_encode(child)!
 				}
 				'log' {
-					mut log_config := log.parse(child)!
-					custom := child.children.any(it.args.len > 0 && it.args[0] !in ['no_hostname', 'hostnames'])
-					log_config.name = if child.args.len == 2 { child.args[1] } else if custom { 'log${log_count}' } else { '' }
+					log_config := log.parse(child, 'log${log_count}')!
 					site.logs << log_config
-					if child.args.len == 1 && custom { log_count++ }
+					if child.args.len == 1 && log_config.name != '' { log_count++ }
 				}
 				'log_skip', 'skip_log', 'log_level', 'log_name', 'log_append' { site.log_rules << parse_log_rule(child)! }
 				'header' { site.response_headers << parse_headers(child, false)! }
@@ -486,9 +483,9 @@ fn rewrite_uri(uri string, target string) string {
 }
 
 struct LogRule {
-mut:
 	kind string
 	args []string
+mut:
 	match HeaderEdit
 }
 
@@ -515,6 +512,8 @@ fn resolve_log_rules(mut rules []LogRule, matchers map[string][]string) ! {
 	}
 }
 
-fn (cfg Config) log_configs() []log.Config {
-	return arrays.flatten(cfg.sites.map(it.logs))
+fn (cfg &Config) log_configs() []&log.Config {
+	mut configs := []&log.Config{}
+	for site in &cfg.sites { configs << site.logs }
+	return configs
 }

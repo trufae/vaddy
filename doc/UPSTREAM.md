@@ -333,7 +333,7 @@ from the open file into the output queue with backpressure.
 whole file but can't serve our multi-range/multipart case, and no
 `os.File.read_into(mut []u8)` helper exists. P2.
 
-### 3.9 JSON access records — `log.encode` (`src/log/format.v`)
+### 3.9 JSON access records — `log.Config.encode` (`src/log/format.v`)
 Encodes `log.Record` → JSON string, **decodes it back to
 `map[string]json2.Any`**, merges format fields and extras, then re-encodes.
 Two full round trips per log line.
@@ -481,7 +481,7 @@ Items 9–10 are the ones that would let a V-native server stop writing C at all
 - [ ] §3.4 measure borrowed `string.bytes()` — then simplify `is_token`,
       `invalid_controls` and the header scans
 - [ ] §3.1 measure `strings.Builder` with read cursor + `swap`
-- [ ] §3.9 `json2` encoder API, rewrite `log.encode`
+- [ ] §3.9 `json2` encoder API, rewrite `log.Config.encode`
 - [x] §3.5 `log.parse_duration` delegates to `time.parse_duration`; only Caddy's `d`
       rewrite remains
 - [x] Use V from git only; remove the release compatibility workflow

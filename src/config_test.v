@@ -184,6 +184,6 @@ fn test_redirect_only_sites_and_invalid_redirects() ! {
 }
 
 fn test_named_log_defaults() ! {
-	cfg := parse_config('http://localhost {\n log named {\n output discard\n }\n log {\n output discard\n }\n redir * /new\n}')!
-	assert cfg.sites[0].logs[1].name == 'log0'
+	cfg := parse_config('http://localhost {\n log named {\n output discard\n }\n log {\n output discard\n }\n log\n log {\n hostnames example.org\n }\n log {\n no_hostname\n }\n log {\n format json\n }\n redir * /new\n}')!
+	assert cfg.sites[0].logs.map(it.name) == ['named', 'log0', '', '', '', 'log1']
 }

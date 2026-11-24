@@ -27,24 +27,21 @@ and Caddy's module ecosystem. Unsupported directives fail validation.
 
 ## Light on resources
 
-A snapshot from the **November 11, 2026** benchmark: 32 concurrent clients,
-512-byte proxy responses, HTTP/1.1 over TLS 1.3, on a shared macOS arm64 host
-with 10 logical CPUs. Values are medians of three 10-second runs.
+The **November 24, 2026** benchmark used 32 concurrent clients and 512-byte
+proxy responses over HTTP/1.1 with TLS 1.3 on a shared macOS arm64 host with
+10 logical CPUs. Values are medians of three four-second runs.
 
-| Measurement | Vaddy · 1 worker | Caddy · default settings |
-| --- | ---: | ---: |
-| Throughput | **21,991 req/s** | 28,028 req/s |
-| CPU under load¹ | **98.7%** | 361.2% |
-| CPU time per request | **44.88 µs** | 128.86 µs |
-| Idle memory (RSS) | **14.38 MiB** | 43.86 MiB |
-| Sampled peak memory (RSS) | **38.70 MiB** | 67.16 MiB |
+| Measurement | Vaddy · 1 worker | Vaddy · 2 workers | Caddy · default settings |
+| --- | ---: | ---: | ---: |
+| Throughput | 20,927 req/s | 31,050 req/s | 24,698 req/s |
+| CPU under load¹ | 97.0% | 176.5% | 306.9% |
+| CPU time per request | 46.34 µs | 56.55 µs | 128.29 µs |
+| Idle memory (RSS) | 13.88 MiB | 19.73 MiB | 44.11 MiB |
+| Sampled peak memory (RSS) | 30.52 MiB | 30.56 MiB | 68.03 MiB |
 
 ¹ 100% means one fully used CPU core. CPU and memory cover the server process only.
 Vaddy defaults to four event-loop workers. Set `--workers N` to choose a count.
-Caddy achieved higher total throughput in this run, using more CPU cores.
-These are local measurements, not minimum hardware requirements or production
-capacity estimates; compression and access logging were disabled.
-See [benchmarks and methodology](doc/BENCHMARKS.md) for revisions, raw data and reproduction.
+Compression and access logging were disabled. [Benchmark methodology and raw data](doc/BENCHMARKS.md#proxy-scaling-after-allocation-reductions-2026-11-24)
 
 ## Get started
 

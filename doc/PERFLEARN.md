@@ -50,8 +50,8 @@ HTTP/2, compression, static-file, reload and Caddy compatibility suites all pass
 
 The following records describe the earlier optimization pass.
 
-The optimized implementation is built. It defaults to one event-loop worker;
-`--workers N` enables up to 64, capped by the connection limit. Parsing, buffer
+That implementation defaulted to one event-loop worker. `--workers N` enables
+up to 64, capped by the connection limit. Parsing, buffer
 reuse, readiness handling, and routing were optimized. The HTTP/HTTPS defaults
 and certificate-management behavior were retained.
 
@@ -403,6 +403,12 @@ or GC synchronization, scheduling, TLS/library overhead, and the shared host's
 client/backend load. None was isolated sufficiently to declare it the cause.
 The measurements do not establish that V threads or Boehm GC are intrinsically
 unable to scale.
+
+The November 24 TCP/TLS profile found threads waiting on the collector's
+allocation lock. V's generated C copied the entire fixed-size receive array
+before taking each slice, even for a short read. Giving each reactor a reusable
+byte buffer removed that allocation. Editing parsed response fields also
+eliminated a serialize-and-parse cycle. [Proxy scaling results](BENCHMARKS.md#proxy-scaling-after-allocation-reductions-2026-11-24)
 
 Connection count, worker count, backend parallelism, and available cores are
 different controls. Round-robin assignment balances connection counts, not

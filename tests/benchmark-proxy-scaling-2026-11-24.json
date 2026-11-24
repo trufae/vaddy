@@ -1,0 +1,2236 @@
+{
+  "platform": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
+  "logical_cpus": 10,
+  "tls_version": "1.3",
+  "http_version": "1.1",
+  "idle_seconds": 2,
+  "warmup_seconds": 1,
+  "workload": "Loopback reverse proxy with the Caddyfile asset rewrite and response header removal. Compression and access logs disabled.",
+  "builds": {
+    "before": {
+      "revision": "4a2d291334e31f06c8188d0caa639f614c9feefb",
+      "path": ".build/scale-2026-11-24/baseline",
+      "sha256": "cc5ba0dfab33b6cc9769c9714db3cfa2b822932b225d569bd497b20af0124174",
+      "bytes": 1718352
+    },
+    "scratch": {
+      "revision": "4a2d291334e31f06c8188d0caa639f614c9feefb",
+      "changes": "Only the reactor socket read buffer",
+      "path": ".build/scale-2026-11-24/scratch",
+      "sha256": "e7833e108b6eee60ab98ca93ce36e0f8355c7fae05c2ae675870f840cec8da6c",
+      "bytes": 1718352
+    },
+    "optimized": {
+      "base_revision": "4a2d291334e31f06c8188d0caa639f614c9feefb",
+      "changes": "Reactor read buffer reuse, header scanning, parsed response header edits and request field copy avoidance",
+      "path": ".build/scale-2026-11-24/optimized",
+      "sha256": "f4ddf905a22626f338d1a493da7fcda90c7ae34540005e24a82d0d3cfe8a51f3",
+      "bytes": 1718288
+    },
+    "caddy": {
+      "revision": "8a6ab2b7bb3c6b83ed8d8031d6457375629858d8",
+      "go": "go1.27.2 darwin/arm64",
+      "path": "caddy-bench",
+      "sha256": "25a7e1013819f3d0645a7cfd125c10308af7feb89c8c338c1b5b02ecb629a4e5",
+      "bytes": 54161794
+    }
+  },
+  "toolchain": {
+    "v": "47889c4b8d10febf33b57ba9c9ef7dba470622c2",
+    "v_flags": "-prod -cc clang -gc boehm -d use_openssl",
+    "clang": "Apple clang 21.0.0 (clang-2100.4.1.1)",
+    "openssl": "3.5.9",
+    "driver": {
+      "go": "go1.27.4 darwin/arm64",
+      "path": ".build/safe-probe/http-driver",
+      "sha256": "e8fab6d6eb878f962cdfba122f088c9ff326d77ab9bf3878d376621f7ed982ae",
+      "bytes": 9993266
+    }
+  },
+  "comparisons": {
+    "scratch": {
+      "response_bytes": 512,
+      "seconds": 4,
+      "runs": 2,
+      "initial_order": [
+        "before-1",
+        "scratch-1",
+        "before-4",
+        "scratch-4"
+      ],
+      "caddy_single_gomaxprocs": null,
+      "total_requests": 761177,
+      "medians": {
+        "32": {
+          "before-1": {
+            "requests_per_second": 17630.21189746887,
+            "cpu_percent": 98.21153111432218,
+            "cpu_us_per_request": 55.707605858372446,
+            "mean_latency_ms": 1.8146228531221356,
+            "idle_rss_mib": 13.8203125,
+            "sampled_peak_rss_mib": 39.3203125,
+            "requests_per_second_range": [
+              17523.432151372883,
+              17736.99164356486
+            ]
+          },
+          "scratch-1": {
+            "requests_per_second": 20249.714100283752,
+            "cpu_percent": 98.22436936901823,
+            "cpu_us_per_request": 48.507352463641325,
+            "mean_latency_ms": 1.5799584319315563,
+            "idle_rss_mib": 13.875,
+            "sampled_peak_rss_mib": 30.5,
+            "requests_per_second_range": [
+              20137.89009964653,
+              20361.538100920974
+            ]
+          },
+          "before-4": {
+            "requests_per_second": 27248.328905404254,
+            "cpu_percent": 247.1800807070046,
+            "cpu_us_per_request": 90.72447535052603,
+            "mean_latency_ms": 1.1740667788904648,
+            "idle_rss_mib": 19.7734375,
+            "sampled_peak_rss_mib": 39.671875,
+            "requests_per_second_range": [
+              27059.973170808447,
+              27436.684640000058
+            ]
+          },
+          "scratch-4": {
+            "requests_per_second": 29993.230262296274,
+            "cpu_percent": 239.82915743881136,
+            "cpu_us_per_request": 79.91996574951517,
+            "mean_latency_ms": 1.0671943114915474,
+            "idle_rss_mib": 19.859375,
+            "sampled_peak_rss_mib": 39.9453125,
+            "requests_per_second_range": [
+              29282.178847682866,
+              30704.28167690968
+            ]
+          }
+        }
+      },
+      "results": [
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.825667396146221,
+          "requests": 70113,
+          "requests_per_second": 17523.432151372883,
+          "wall_seconds": 4.00109975,
+          "server": "before-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:33:15.713254+00:00",
+          "host_load_average_start": [
+            10.5849609375,
+            10.06884765625,
+            8.09130859375
+          ],
+          "host_load_average_end": [
+            10.5849609375,
+            10.06884765625,
+            8.09130859375
+          ],
+          "cpu_seconds": 3.9200000000000004,
+          "cpu_percent": 97.97306353084551,
+          "cpu_us_per_request": 55.90974569623323,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.828125,
+          "sampled_peak_rss_mib": 39.328125,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.588680673253072,
+          "requests": 80570,
+          "requests_per_second": 20137.89009964653,
+          "wall_seconds": 4.000915667,
+          "server": "scratch-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:33:22.944059+00:00",
+          "host_load_average_start": [
+            9.8974609375,
+            9.9345703125,
+            8.05517578125
+          ],
+          "host_load_average_end": [
+            9.7451171875,
+            9.90234375,
+            8.0546875
+          ],
+          "cpu_seconds": 3.9200000000000004,
+          "cpu_percent": 97.97757129280677,
+          "cpu_us_per_request": 48.65334491746308,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.875,
+          "sampled_peak_rss_mib": 30.5,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.1821125906408445,
+          "requests": 108279,
+          "requests_per_second": 27059.973170808447,
+          "wall_seconds": 4.001445209,
+          "server": "before-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:33:30.178379+00:00",
+          "host_load_average_start": [
+            10.24560546875,
+            10.00341796875,
+            8.10107421875
+          ],
+          "host_load_average_end": [
+            10.24560546875,
+            10.00341796875,
+            8.10107421875
+          ],
+          "cpu_seconds": 9.99,
+          "cpu_percent": 249.65979735348165,
+          "cpu_us_per_request": 92.26165738508853,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.78125,
+          "sampled_peak_rss_mib": 39.6875,
+          "valid": true,
+          "workers": 4,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.0419545171857956,
+          "requests": 122834,
+          "requests_per_second": 30704.28167690968,
+          "wall_seconds": 4.000549542,
+          "server": "scratch-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:33:37.449022+00:00",
+          "host_load_average_start": [
+            9.8251953125,
+            9.919921875,
+            8.08251953125
+          ],
+          "host_load_average_end": [
+            9.1982421875,
+            9.7880859375,
+            8.046875
+          ],
+          "cpu_seconds": 10.030000000000001,
+          "cpu_percent": 250.71555531807488,
+          "cpu_us_per_request": 81.6549163912272,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.859375,
+          "sampled_peak_rss_mib": 40.0,
+          "valid": true,
+          "workers": 4,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.5712361906100405,
+          "requests": 81470,
+          "requests_per_second": 20361.538100920974,
+          "wall_seconds": 4.001171208,
+          "server": "scratch-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:33:44.727646+00:00",
+          "host_load_average_start": [
+            9.1982421875,
+            9.7880859375,
+            8.046875
+          ],
+          "host_load_average_end": [
+            8.62158203125,
+            9.65869140625,
+            8.01123046875
+          ],
+          "cpu_seconds": 3.94,
+          "cpu_percent": 98.47116744522971,
+          "cpu_us_per_request": 48.36136000981956,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.875,
+          "sampled_peak_rss_mib": 30.5,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.166020967140085,
+          "requests": 109769,
+          "requests_per_second": 27436.684640000058,
+          "wall_seconds": 4.000811375,
+          "server": "before-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:33:51.960289+00:00",
+          "host_load_average_start": [
+            8.33154296875,
+            9.5810546875,
+            7.9931640625
+          ],
+          "host_load_average_end": [
+            8.544921875,
+            9.6044921875,
+            8.0107421875
+          ],
+          "cpu_seconds": 9.79,
+          "cpu_percent": 244.7003640605276,
+          "cpu_us_per_request": 89.18729331596353,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.765625,
+          "sampled_peak_rss_mib": 39.65625,
+          "valid": true,
+          "workers": 4,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.0924341057972995,
+          "requests": 117158,
+          "requests_per_second": 29282.178847682866,
+          "wall_seconds": 4.001000083,
+          "server": "scratch-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:33:59.218773+00:00",
+          "host_load_average_start": [
+            8.544921875,
+            9.6044921875,
+            8.0107421875
+          ],
+          "host_load_average_end": [
+            9.3017578125,
+            9.74365234375,
+            8.06884765625
+          ],
+          "cpu_seconds": 9.16,
+          "cpu_percent": 228.94275955954785,
+          "cpu_us_per_request": 78.18501510780314,
+          "idle_cpu_percent": 0.4999999999999998,
+          "idle_rss_mib": 19.859375,
+          "sampled_peak_rss_mib": 39.890625,
+          "valid": true,
+          "workers": 4,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.8035783100980503,
+          "requests": 70984,
+          "requests_per_second": 17736.99164356486,
+          "wall_seconds": 4.002031541,
+          "server": "before-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:34:06.499854+00:00",
+          "host_load_average_start": [
+            9.1171875,
+            9.69775390625,
+            8.0625
+          ],
+          "host_load_average_end": [
+            9.427734375,
+            9.75244140625,
+            8.09130859375
+          ],
+          "cpu_seconds": 3.94,
+          "cpu_percent": 98.44999869779886,
+          "cpu_us_per_request": 55.50546602051166,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.8125,
+          "sampled_peak_rss_mib": 39.3125,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        }
+      ]
+    },
+    "final-32": {
+      "response_bytes": 512,
+      "seconds": 4,
+      "runs": 3,
+      "initial_order": [
+        "before-1",
+        "optimized-1",
+        "before-2",
+        "optimized-2",
+        "before-4",
+        "optimized-4",
+        "caddy",
+        "caddy-single"
+      ],
+      "caddy_single_gomaxprocs": 1,
+      "total_requests": 2246564,
+      "medians": {
+        "32": {
+          "before-1": {
+            "requests_per_second": 17749.266679408025,
+            "cpu_percent": 98.18865867290879,
+            "cpu_us_per_request": 55.475768071865055,
+            "mean_latency_ms": 1.8024516895187406,
+            "idle_rss_mib": 13.796875,
+            "sampled_peak_rss_mib": 39.296875,
+            "requests_per_second_range": [
+              17558.37521239945,
+              17862.091029267856
+            ]
+          },
+          "optimized-1": {
+            "requests_per_second": 20927.228085945888,
+            "cpu_percent": 96.97557025375619,
+            "cpu_us_per_request": 46.33942434014094,
+            "mean_latency_ms": 1.528653821951511,
+            "idle_rss_mib": 13.875,
+            "sampled_peak_rss_mib": 30.515625,
+            "requests_per_second_range": [
+              20480.621598959413,
+              21246.26143314428
+            ]
+          },
+          "before-2": {
+            "requests_per_second": 24256.177475739838,
+            "cpu_percent": 168.45609086706492,
+            "cpu_us_per_request": 69.44873776403915,
+            "mean_latency_ms": 1.3188267885419886,
+            "idle_rss_mib": 19.671875,
+            "sampled_peak_rss_mib": 39.328125,
+            "requests_per_second_range": [
+              23379.110688003573,
+              24791.99076432184
+            ]
+          },
+          "optimized-2": {
+            "requests_per_second": 31050.497296049165,
+            "cpu_percent": 176.47014716284994,
+            "cpu_us_per_request": 56.551447616820084,
+            "mean_latency_ms": 1.0302251157193112,
+            "idle_rss_mib": 19.734375,
+            "sampled_peak_rss_mib": 30.5625,
+            "requests_per_second_range": [
+              29924.36919518974,
+              31528.179984449853
+            ]
+          },
+          "before-4": {
+            "requests_per_second": 26523.002414760682,
+            "cpu_percent": 229.9436685725308,
+            "cpu_us_per_request": 87.5543969340382,
+            "mean_latency_ms": 1.206070905802974,
+            "idle_rss_mib": 19.78125,
+            "sampled_peak_rss_mib": 39.6875,
+            "requests_per_second_range": [
+              24057.414920780226,
+              27059.027039541797
+            ]
+          },
+          "optimized-4": {
+            "requests_per_second": 31824.67968653362,
+            "cpu_percent": 219.46158736403666,
+            "cpu_us_per_request": 69.75071907957815,
+            "mean_latency_ms": 1.0052821998020751,
+            "idle_rss_mib": 19.859375,
+            "sampled_peak_rss_mib": 39.9375,
+            "requests_per_second_range": [
+              31285.788471406366,
+              32010.525206253827
+            ]
+          },
+          "caddy": {
+            "requests_per_second": 24697.688773802256,
+            "cpu_percent": 306.94952598732044,
+            "cpu_us_per_request": 128.2942314555666,
+            "mean_latency_ms": 1.2953834872832897,
+            "idle_rss_mib": 44.109375,
+            "sampled_peak_rss_mib": 68.03125,
+            "requests_per_second_range": [
+              20110.556656691446,
+              26608.609081093135
+            ]
+          },
+          "caddy-single": {
+            "requests_per_second": 12133.880875603263,
+            "cpu_percent": 98.95911546202309,
+            "cpu_us_per_request": 81.55195848263932,
+            "mean_latency_ms": 2.6363217351414803,
+            "idle_rss_mib": 42.171875,
+            "sampled_peak_rss_mib": 52.671875,
+            "requests_per_second_range": [
+              12110.246703043185,
+              12307.629894198351
+            ]
+          }
+        }
+      },
+      "results": [
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.7910537873498105,
+          "requests": 71493,
+          "requests_per_second": 17862.091029267856,
+          "wall_seconds": 4.002498917,
+          "server": "before-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:44:45.403276+00:00",
+          "host_load_average_start": [
+            7.62451171875,
+            7.970703125,
+            7.77978515625
+          ],
+          "host_load_average_end": [
+            7.62451171875,
+            7.970703125,
+            7.77978515625
+          ],
+          "cpu_seconds": 3.9300000000000006,
+          "cpu_percent": 98.18865867290879,
+          "cpu_us_per_request": 54.970416684150905,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.78125,
+          "sampled_peak_rss_mib": 39.265625,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.5620652277447618,
+          "requests": 81947,
+          "requests_per_second": 20480.621598959413,
+          "wall_seconds": 4.001196917,
+          "server": "optimized-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:44:52.636396+00:00",
+          "host_load_average_start": [
+            7.173828125,
+            7.87109375,
+            7.74560546875
+          ],
+          "host_load_average_end": [
+            7.64013671875,
+            7.9560546875,
+            7.7763671875
+          ],
+          "cpu_seconds": 3.83,
+          "cpu_percent": 95.72135737002519,
+          "cpu_us_per_request": 46.73752547378184,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.875,
+          "sampled_peak_rss_mib": 30.515625,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.368380242883561,
+          "requests": 93551,
+          "requests_per_second": 23379.110688003573,
+          "wall_seconds": 4.001478125,
+          "server": "before-2",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:44:59.853816+00:00",
+          "host_load_average_start": [
+            7.64013671875,
+            7.9560546875,
+            7.7763671875
+          ],
+          "host_load_average_end": [
+            8.6298828125,
+            8.15576171875,
+            7.84765625
+          ],
+          "cpu_seconds": 6.550000000000001,
+          "cpu_percent": 163.68951161016284,
+          "cpu_us_per_request": 70.01528577994891,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.65625,
+          "sampled_peak_rss_mib": 39.203125,
+          "valid": true,
+          "workers": 2,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.0302251157193112,
+          "requests": 124223,
+          "requests_per_second": 31050.497296049165,
+          "wall_seconds": 4.000676666,
+          "server": "optimized-2",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:45:07.130183+00:00",
+          "host_load_average_start": [
+            9.0595703125,
+            8.25244140625,
+            7.88330078125
+          ],
+          "host_load_average_end": [
+            9.6953125,
+            8.3974609375,
+            7.9365234375
+          ],
+          "cpu_seconds": 7.059999999999999,
+          "cpu_percent": 176.47014716284994,
+          "cpu_us_per_request": 56.833275641386855,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.75,
+          "sampled_peak_rss_mib": 30.609375,
+          "valid": true,
+          "workers": 2,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.206070905802974,
+          "requests": 106118,
+          "requests_per_second": 26523.002414760682,
+          "wall_seconds": 4.000979917,
+          "server": "before-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:45:14.337022+00:00",
+          "host_load_average_start": [
+            9.6953125,
+            8.3974609375,
+            7.9365234375
+          ],
+          "host_load_average_end": [
+            11.24072265625,
+            8.7392578125,
+            8.0595703125
+          ],
+          "cpu_seconds": 9.2,
+          "cpu_percent": 229.9436685725308,
+          "cpu_us_per_request": 86.69594225296368,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.765625,
+          "sampled_peak_rss_mib": 39.796875,
+          "valid": true,
+          "workers": 4,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.0225925901086608,
+          "requests": 125160,
+          "requests_per_second": 31285.788471406366,
+          "wall_seconds": 4.000538459,
+          "server": "optimized-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:45:21.630148+00:00",
+          "host_load_average_start": [
+            10.58056640625,
+            8.6435546875,
+            8.02978515625
+          ],
+          "host_load_average_end": [
+            10.77392578125,
+            8.7158203125,
+            8.05859375
+          ],
+          "cpu_seconds": 8.73,
+          "cpu_percent": 218.22062428521699,
+          "cpu_us_per_request": 69.75071907957815,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.859375,
+          "sampled_peak_rss_mib": 40.046875,
+          "valid": true,
+          "workers": 4,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.5908404487061574,
+          "requests": 80458,
+          "requests_per_second": 20110.556656691446,
+          "wall_seconds": 4.000784333,
+          "server": "caddy",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:45:28.889414+00:00",
+          "host_load_average_start": [
+            10.77392578125,
+            8.7158203125,
+            8.05859375
+          ],
+          "host_load_average_end": [
+            12.6337890625,
+            9.13525390625,
+            8.21044921875
+          ],
+          "cpu_seconds": 10.82,
+          "cpu_percent": 270.44696987919343,
+          "cpu_us_per_request": 134.48010141937408,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 44.109375,
+          "sampled_peak_rss_mib": 69.609375,
+          "valid": true,
+          "workers": 0,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 2.6413802344772086,
+          "requests": 48461,
+          "requests_per_second": 12110.246703043185,
+          "wall_seconds": 4.001652583,
+          "server": "caddy-single",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:45:36.106960+00:00",
+          "host_load_average_start": [
+            12.1025390625,
+            9.0830078125,
+            8.197265625
+          ],
+          "host_load_average_end": [
+            12.1025390625,
+            9.0830078125,
+            8.197265625
+          ],
+          "cpu_seconds": 3.96,
+          "cpu_percent": 98.95911546202309,
+          "cpu_us_per_request": 81.71519366088195,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 42.171875,
+          "sampled_peak_rss_mib": 52.984375,
+          "valid": true,
+          "workers": 0,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.528653821951511,
+          "requests": 83730,
+          "requests_per_second": 20927.228085945888,
+          "wall_seconds": 4.001007666,
+          "server": "optimized-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:45:43.345055+00:00",
+          "host_load_average_start": [
+            11.77392578125,
+            9.06494140625,
+            8.19580078125
+          ],
+          "host_load_average_end": [
+            11.8720703125,
+            9.1298828125,
+            8.2236328125
+          ],
+          "cpu_seconds": 3.8800000000000003,
+          "cpu_percent": 96.97557025375619,
+          "cpu_us_per_request": 46.33942434014094,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.875,
+          "sampled_peak_rss_mib": 30.515625,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.3188267885419886,
+          "requests": 97050,
+          "requests_per_second": 24256.177475739838,
+          "wall_seconds": 4.001042625,
+          "server": "before-2",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:45:50.616778+00:00",
+          "host_load_average_start": [
+            12.2822265625,
+            9.26025390625,
+            8.27490234375
+          ],
+          "host_load_average_end": [
+            12.2822265625,
+            9.26025390625,
+            8.27490234375
+          ],
+          "cpu_seconds": 6.74,
+          "cpu_percent": 168.45609086706492,
+          "cpu_us_per_request": 69.44873776403915,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.671875,
+          "sampled_peak_rss_mib": 39.328125,
+          "valid": true,
+          "workers": 2,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.0146853423841953,
+          "requests": 126139,
+          "requests_per_second": 31528.179984449853,
+          "wall_seconds": 4.000833542,
+          "server": "optimized-2",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:45:57.847007+00:00",
+          "host_load_average_start": [
+            12.17919921875,
+            9.2890625,
+            8.29052734375
+          ],
+          "host_load_average_end": [
+            13.44580078125,
+            9.599609375,
+            8.40576171875
+          ],
+          "cpu_seconds": 7.09,
+          "cpu_percent": 177.21307136551698,
+          "cpu_us_per_request": 56.207834214636236,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.734375,
+          "sampled_peak_rss_mib": 30.546875,
+          "valid": true,
+          "workers": 2,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.329717520787678,
+          "requests": 96283,
+          "requests_per_second": 24057.414920780226,
+          "wall_seconds": 4.002217209,
+          "server": "before-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:46:05.094518+00:00",
+          "host_load_average_start": [
+            13.44580078125,
+            9.599609375,
+            8.40576171875
+          ],
+          "host_load_average_end": [
+            13.89013671875,
+            9.75537109375,
+            8.4677734375
+          ],
+          "cpu_seconds": 8.43,
+          "cpu_percent": 210.6332455180845,
+          "cpu_us_per_request": 87.5543969340382,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.78125,
+          "sampled_peak_rss_mib": 39.6875,
+          "valid": true,
+          "workers": 4,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.9993944097616966,
+          "requests": 128072,
+          "requests_per_second": 32010.525206253827,
+          "wall_seconds": 4.000934042,
+          "server": "optimized-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:46:12.296318+00:00",
+          "host_load_average_start": [
+            15.02001953125,
+            10.05810546875,
+            8.58203125
+          ],
+          "host_load_average_end": [
+            16.21923828125,
+            10.38916015625,
+            8.70751953125
+          ],
+          "cpu_seconds": 8.950000000000001,
+          "cpu_percent": 223.69776422322738,
+          "cpu_us_per_request": 69.88256605659318,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.875,
+          "sampled_peak_rss_mib": 39.9375,
+          "valid": true,
+          "workers": 4,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.2953834872832897,
+          "requests": 98807,
+          "requests_per_second": 24697.688773802256,
+          "wall_seconds": 4.00065775,
+          "server": "caddy",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:46:19.660272+00:00",
+          "host_load_average_start": [
+            16.21923828125,
+            10.38916015625,
+            8.70751953125
+          ],
+          "host_load_average_end": [
+            17.88330078125,
+            10.83056640625,
+            8.873046875
+          ],
+          "cpu_seconds": 12.280000000000001,
+          "cpu_percent": 306.94952598732044,
+          "cpu_us_per_request": 124.28269252178491,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 44.4375,
+          "sampled_peak_rss_mib": 68.03125,
+          "valid": true,
+          "workers": 0,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 2.6363217351414803,
+          "requests": 48558,
+          "requests_per_second": 12133.880875603263,
+          "wall_seconds": 4.001852375,
+          "server": "caddy-single",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:46:26.899825+00:00",
+          "host_load_average_start": [
+            17.33203125,
+            10.8330078125,
+            8.88525390625
+          ],
+          "host_load_average_end": [
+            16.98486328125,
+            10.86865234375,
+            8.9091796875
+          ],
+          "cpu_seconds": 3.96,
+          "cpu_percent": 98.95417494004884,
+          "cpu_us_per_request": 81.55195848263932,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 42.34375,
+          "sampled_peak_rss_mib": 52.671875,
+          "valid": true,
+          "workers": 0,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.8024516895187406,
+          "requests": 71022,
+          "requests_per_second": 17749.266679408025,
+          "wall_seconds": 4.00140475,
+          "server": "before-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:46:34.128643+00:00",
+          "host_load_average_start": [
+            16.98486328125,
+            10.86865234375,
+            8.9091796875
+          ],
+          "host_load_average_end": [
+            17.30615234375,
+            11.03662109375,
+            8.97998046875
+          ],
+          "cpu_seconds": 3.94,
+          "cpu_percent": 98.4654201752522,
+          "cpu_us_per_request": 55.475768071865055,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.828125,
+          "sampled_peak_rss_mib": 39.3125,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.2904228727333207,
+          "requests": 99209,
+          "requests_per_second": 24791.99076432184,
+          "wall_seconds": 4.00165525,
+          "server": "before-2",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:46:41.331346+00:00",
+          "host_load_average_start": [
+            17.841796875,
+            11.25146484375,
+            9.06787109375
+          ],
+          "host_load_average_end": [
+            18.57470703125,
+            11.5126953125,
+            9.1728515625
+          ],
+          "cpu_seconds": 6.880000000000001,
+          "cpu_percent": 171.92885369123192,
+          "cpu_us_per_request": 69.34854700682399,
+          "idle_cpu_percent": 0.4999999999999998,
+          "idle_rss_mib": 19.671875,
+          "sampled_peak_rss_mib": 39.34375,
+          "valid": true,
+          "workers": 2,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.0690686852581988,
+          "requests": 119714,
+          "requests_per_second": 29924.36919518974,
+          "wall_seconds": 4.000552166,
+          "server": "optimized-2",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:46:48.547157+00:00",
+          "host_load_average_start": [
+            18.57470703125,
+            11.5126953125,
+            9.1728515625
+          ],
+          "host_load_average_end": [
+            19.8095703125,
+            11.8857421875,
+            9.31787109375
+          ],
+          "cpu_seconds": 6.77,
+          "cpu_percent": 169.22663970081572,
+          "cpu_us_per_request": 56.551447616820084,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.734375,
+          "sampled_peak_rss_mib": 30.5625,
+          "valid": true,
+          "workers": 2,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.1823134528113655,
+          "requests": 108257,
+          "requests_per_second": 27059.027039541797,
+          "wall_seconds": 4.000772084,
+          "server": "before-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:46:55.721304+00:00",
+          "host_load_average_start": [
+            21.18603515625,
+            12.30224609375,
+            9.47998046875
+          ],
+          "host_load_average_end": [
+            21.18603515625,
+            12.30224609375,
+            9.47998046875
+          ],
+          "cpu_seconds": 9.56,
+          "cpu_percent": 238.95387688373,
+          "cpu_us_per_request": 88.30837728738095,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.78125,
+          "sampled_peak_rss_mib": 39.53125,
+          "valid": true,
+          "workers": 4,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.0052821998020751,
+          "requests": 127321,
+          "requests_per_second": 31824.67968653362,
+          "wall_seconds": 4.000700125,
+          "server": "optimized-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:47:02.965703+00:00",
+          "host_load_average_start": [
+            20.4501953125,
+            12.296875,
+            9.49462890625
+          ],
+          "host_load_average_end": [
+            21.375,
+            12.62353515625,
+            9.62646484375
+          ],
+          "cpu_seconds": 8.78,
+          "cpu_percent": 219.46158736403666,
+          "cpu_us_per_request": 68.95955891015622,
+          "idle_cpu_percent": 0.4999999999999998,
+          "idle_rss_mib": 19.859375,
+          "sampled_peak_rss_mib": 39.9375,
+          "valid": true,
+          "workers": 4,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.2021870117963072,
+          "requests": 106474,
+          "requests_per_second": 26608.609081093135,
+          "wall_seconds": 4.001486875,
+          "server": "caddy",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:47:10.304463+00:00",
+          "host_load_average_start": [
+            21.375,
+            12.62353515625,
+            9.62646484375
+          ],
+          "host_load_average_end": [
+            22.0654296875,
+            12.91162109375,
+            9.74560546875
+          ],
+          "cpu_seconds": 13.659999999999998,
+          "cpu_percent": 341.37310521604536,
+          "cpu_us_per_request": 128.2942314555666,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 43.6875,
+          "sampled_peak_rss_mib": 67.140625,
+          "valid": true,
+          "workers": 0,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 2.599060173932466,
+          "requests": 49249,
+          "requests_per_second": 12307.629894198351,
+          "wall_seconds": 4.001501542,
+          "server": "caddy-single",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:47:17.504235+00:00",
+          "host_load_average_start": [
+            21.33935546875,
+            12.9130859375,
+            9.7646484375
+          ],
+          "host_load_average_end": [
+            20.91162109375,
+            12.9638671875,
+            9.80078125
+          ],
+          "cpu_seconds": 3.9699999999999998,
+          "cpu_percent": 99.21275696961858,
+          "cpu_us_per_request": 80.61077382281873,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 42.140625,
+          "sampled_peak_rss_mib": 52.25,
+          "valid": true,
+          "workers": 0,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.8220749563756955,
+          "requests": 70259,
+          "requests_per_second": 17558.37521239945,
+          "wall_seconds": 4.00145225,
+          "server": "before-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:47:24.721716+00:00",
+          "host_load_average_start": [
+            20.91162109375,
+            12.9638671875,
+            9.80078125
+          ],
+          "host_load_average_end": [
+            20.91845703125,
+            13.09716796875,
+            9.8662109375
+          ],
+          "cpu_seconds": 3.9200000000000004,
+          "cpu_percent": 97.96443278812089,
+          "cpu_us_per_request": 55.79356381388862,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.796875,
+          "sampled_peak_rss_mib": 39.296875,
+          "valid": true,
+          "workers": 1,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 1.5057865990777446,
+          "requests": 85009,
+          "requests_per_second": 21246.26143314428,
+          "wall_seconds": 4.001127458,
+          "server": "optimized-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:47:31.933622+00:00",
+          "host_load_average_start": [
+            19.8037109375,
+            12.99560546875,
+            9.84912109375
+          ],
+          "host_load_average_end": [
+            20.1396484375,
+            13.17822265625,
+            9.931640625
+          ],
+          "cpu_seconds": 3.9099999999999997,
+          "cpu_percent": 97.72245550893919,
+          "cpu_us_per_request": 45.99512992741944,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.875,
+          "sampled_peak_rss_mib": 30.515625,
+          "valid": true,
+          "workers": 1,
+          "run": 3
+        }
+      ]
+    },
+    "final-low": {
+      "response_bytes": 512,
+      "seconds": 4,
+      "runs": 2,
+      "initial_order": [
+        "before-1",
+        "optimized-1",
+        "caddy"
+      ],
+      "caddy_single_gomaxprocs": null,
+      "total_requests": 468578,
+      "medians": {
+        "1": {
+          "before-1": {
+            "requests_per_second": 6283.6869722139,
+            "cpu_percent": 42.9995688031096,
+            "cpu_us_per_request": 68.43194487968395,
+            "mean_latency_ms": 0.15902356467576434,
+            "idle_rss_mib": 13.8125,
+            "sampled_peak_rss_mib": 28.5078125,
+            "requests_per_second_range": [
+              6200.447296197982,
+              6366.926648229817
+            ]
+          },
+          "optimized-1": {
+            "requests_per_second": 6151.563694657036,
+            "cpu_percent": 37.74963198395568,
+            "cpu_us_per_request": 61.426019324063475,
+            "mean_latency_ms": 0.16260756688837175,
+            "idle_rss_mib": 13.8828125,
+            "sampled_peak_rss_mib": 28.546875,
+            "requests_per_second_range": [
+              5937.738186869877,
+              6365.389202444195
+            ]
+          },
+          "caddy": {
+            "requests_per_second": 4418.346098854096,
+            "cpu_percent": 101.37143573244863,
+            "cpu_us_per_request": 229.8312804571073,
+            "mean_latency_ms": 0.226704764169465,
+            "idle_rss_mib": 43.828125,
+            "sampled_peak_rss_mib": 52.484375,
+            "requests_per_second_range": [
+              4202.0627455789,
+              4634.629452129293
+            ]
+          }
+        },
+        "4": {
+          "before-1": {
+            "requests_per_second": 15677.526215373477,
+            "cpu_percent": 93.74567977692654,
+            "cpu_us_per_request": 59.79817157229733,
+            "mean_latency_ms": 0.2550085940246013,
+            "idle_rss_mib": 13.8203125,
+            "sampled_peak_rss_mib": 28.734375,
+            "requests_per_second_range": [
+              15564.816294176371,
+              15790.236136570584
+            ]
+          },
+          "optimized-1": {
+            "requests_per_second": 13589.209490479865,
+            "cpu_percent": 74.49142599890966,
+            "cpu_us_per_request": 55.00591729858809,
+            "mean_latency_ms": 0.3009361867092547,
+            "idle_rss_mib": 13.8828125,
+            "sampled_peak_rss_mib": 28.7109375,
+            "requests_per_second_range": [
+              11549.664441293762,
+              15628.754539665968
+            ]
+          },
+          "caddy": {
+            "requests_per_second": 12448.677971475023,
+            "cpu_percent": 241.98645305362982,
+            "cpu_us_per_request": 194.41901822345366,
+            "mean_latency_ms": 0.3223102479611042,
+            "idle_rss_mib": 44.46875,
+            "sampled_peak_rss_mib": 55.5625,
+            "requests_per_second_range": [
+              11707.38950939349,
+              13189.966433556558
+            ]
+          }
+        }
+      },
+      "results": [
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.15691446069577508,
+          "requests": 25468,
+          "requests_per_second": 6366.926648229817,
+          "wall_seconds": 4.000046083,
+          "server": "before-1",
+          "concurrency": 1,
+          "measurement_started": "2026-11-24T15:47:39.286702+00:00",
+          "host_load_average_start": [
+            20.1396484375,
+            13.17822265625,
+            9.931640625
+          ],
+          "host_load_average_end": [
+            20.20849609375,
+            13.3076171875,
+            9.99609375
+          ],
+          "cpu_seconds": 1.74,
+          "cpu_percent": 43.49949885314859,
+          "cpu_us_per_request": 68.32103031254908,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.8125,
+          "sampled_peak_rss_mib": 28.5,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.15695117748016651,
+          "requests": 25462,
+          "requests_per_second": 6365.389202444195,
+          "wall_seconds": 4.000069625,
+          "server": "optimized-1",
+          "concurrency": 1,
+          "measurement_started": "2026-11-24T15:47:46.509851+00:00",
+          "host_load_average_start": [
+            19.951171875,
+            13.36865234375,
+            10.037109375
+          ],
+          "host_load_average_end": [
+            20.67578125,
+            13.6279296875,
+            10.14794921875
+          ],
+          "cpu_seconds": 1.52,
+          "cpu_percent": 37.999338574012945,
+          "cpu_us_per_request": 59.69680307909827,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.875,
+          "sampled_peak_rss_mib": 28.546875,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.21558242089648846,
+          "requests": 18539,
+          "requests_per_second": 4634.629452129293,
+          "wall_seconds": 4.000104041,
+          "server": "caddy",
+          "concurrency": 1,
+          "measurement_started": "2026-11-24T15:47:53.718188+00:00",
+          "host_load_average_start": [
+            20.67578125,
+            13.6279296875,
+            10.14794921875
+          ],
+          "host_load_average_end": [
+            21.02197265625,
+            13.81640625,
+            10.23486328125
+          ],
+          "cpu_seconds": 4.11,
+          "cpu_percent": 102.74732751632448,
+          "cpu_us_per_request": 221.69480554506717,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 43.484375,
+          "sampled_peak_rss_mib": 52.484375,
+          "valid": true,
+          "workers": 0,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.25684352890252327,
+          "requests": 62261,
+          "requests_per_second": 15564.816294176371,
+          "wall_seconds": 4.000111458,
+          "server": "before-1",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:48:00.958740+00:00",
+          "host_load_average_start": [
+            22.54150390625,
+            14.2509765625,
+            10.4091796875
+          ],
+          "host_load_average_end": [
+            22.54150390625,
+            14.2509765625,
+            10.4091796875
+          ],
+          "cpu_seconds": 3.74,
+          "cpu_percent": 93.49739474184422,
+          "cpu_us_per_request": 60.069706557877325,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.8125,
+          "sampled_peak_rss_mib": 28.71875,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.34615674692693904,
+          "requests": 46208,
+          "requests_per_second": 11549.664441293762,
+          "wall_seconds": 4.000808875,
+          "server": "optimized-1",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:48:08.168710+00:00",
+          "host_load_average_start": [
+            21.537109375,
+            14.18017578125,
+            10.40673828125
+          ],
+          "host_load_average_end": [
+            22.93505859375,
+            14.591796875,
+            10.57421875
+          ],
+          "cpu_seconds": 2.5999999999999996,
+          "cpu_percent": 64.98685843872009,
+          "cpu_us_per_request": 56.26731301939057,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.875,
+          "sampled_peak_rss_mib": 28.703125,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.3415085726426375,
+          "requests": 46832,
+          "requests_per_second": 11707.38950939349,
+          "wall_seconds": 4.000208583,
+          "server": "caddy",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:48:15.513579+00:00",
+          "host_load_average_start": [
+            23.10009765625,
+            14.76416015625,
+            10.65869140625
+          ],
+          "host_load_average_end": [
+            23.10009765625,
+            14.76416015625,
+            10.65869140625
+          ],
+          "cpu_seconds": 9.129999999999999,
+          "cpu_percent": 228.23809835318278,
+          "cpu_us_per_request": 194.95216945678166,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 44.296875,
+          "sampled_peak_rss_mib": 55.59375,
+          "valid": true,
+          "workers": 0,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.16826395629657698,
+          "requests": 23751,
+          "requests_per_second": 5937.738186869877,
+          "wall_seconds": 4.000007958,
+          "server": "optimized-1",
+          "concurrency": 1,
+          "measurement_started": "2026-11-24T15:48:22.689046+00:00",
+          "host_load_average_start": [
+            22.8515625,
+            14.85107421875,
+            10.71337890625
+          ],
+          "host_load_average_end": [
+            22.783203125,
+            14.9697265625,
+            10.779296875
+          ],
+          "cpu_seconds": 1.5,
+          "cpu_percent": 37.49992539389842,
+          "cpu_us_per_request": 63.155235569028676,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.890625,
+          "sampled_peak_rss_mib": 28.546875,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.23782710744244154,
+          "requests": 16809,
+          "requests_per_second": 4202.0627455789,
+          "wall_seconds": 4.00017825,
+          "server": "caddy",
+          "concurrency": 1,
+          "measurement_started": "2026-11-24T15:48:29.902482+00:00",
+          "host_load_average_start": [
+            22.783203125,
+            14.9697265625,
+            10.779296875
+          ],
+          "host_load_average_end": [
+            22.39990234375,
+            15.02001953125,
+            10.8212890625
+          ],
+          "cpu_seconds": 4.0,
+          "cpu_percent": 99.99554394857279,
+          "cpu_us_per_request": 237.96775536914748,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 44.171875,
+          "sampled_peak_rss_mib": 52.484375,
+          "valid": true,
+          "workers": 0,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.16113266865575357,
+          "requests": 24802,
+          "requests_per_second": 6200.447296197982,
+          "wall_seconds": 4.000034,
+          "server": "before-1",
+          "concurrency": 1,
+          "measurement_started": "2026-11-24T15:48:37.150286+00:00",
+          "host_load_average_start": [
+            21.96728515625,
+            15.052734375,
+            10.857421875
+          ],
+          "host_load_average_end": [
+            21.6494140625,
+            15.1015625,
+            10.89892578125
+          ],
+          "cpu_seconds": 1.7,
+          "cpu_percent": 42.4996387530706,
+          "cpu_us_per_request": 68.54285944681881,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.8125,
+          "sampled_peak_rss_mib": 28.515625,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.2557156264915704,
+          "requests": 62518,
+          "requests_per_second": 15628.754539665968,
+          "wall_seconds": 4.000190792,
+          "server": "optimized-1",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:48:44.352626+00:00",
+          "host_load_average_start": [
+            21.6494140625,
+            15.1015625,
+            10.89892578125
+          ],
+          "host_load_average_end": [
+            21.99755859375,
+            15.2822265625,
+            10.9873046875
+          ],
+          "cpu_seconds": 3.3600000000000003,
+          "cpu_percent": 83.99599355909923,
+          "cpu_us_per_request": 53.744521577785605,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.890625,
+          "sampled_peak_rss_mib": 28.71875,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.3031119232795709,
+          "requests": 52763,
+          "requests_per_second": 13189.966433556558,
+          "wall_seconds": 4.000237625,
+          "server": "caddy",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:48:51.771583+00:00",
+          "host_load_average_start": [
+            22.23779296875,
+            15.443359375,
+            11.0693359375
+          ],
+          "host_load_average_end": [
+            22.21875,
+            15.5517578125,
+            11.13330078125
+          ],
+          "cpu_seconds": 10.23,
+          "cpu_percent": 255.73480775407688,
+          "cpu_us_per_request": 193.88586699012566,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 44.640625,
+          "sampled_peak_rss_mib": 55.53125,
+          "valid": true,
+          "workers": 0,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.25317365914667933,
+          "requests": 63165,
+          "requests_per_second": 15790.236136570584,
+          "wall_seconds": 4.000256833,
+          "server": "before-1",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:48:58.984255+00:00",
+          "host_load_average_start": [
+            22.21875,
+            15.5517578125,
+            11.13330078125
+          ],
+          "host_load_average_end": [
+            22.201171875,
+            15.65869140625,
+            11.19677734375
+          ],
+          "cpu_seconds": 3.76,
+          "cpu_percent": 93.99396481200885,
+          "cpu_us_per_request": 59.52663658671733,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.828125,
+          "sampled_peak_rss_mib": 28.75,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        }
+      ]
+    },
+    "final-large": {
+      "response_bytes": 65536,
+      "seconds": 4,
+      "runs": 3,
+      "initial_order": [
+        "before-1",
+        "optimized-1",
+        "optimized-4",
+        "caddy"
+      ],
+      "caddy_single_gomaxprocs": null,
+      "total_requests": 414058,
+      "medians": {
+        "32": {
+          "before-1": {
+            "requests_per_second": 5885.469889895474,
+            "cpu_percent": 98.36579013399577,
+            "cpu_us_per_request": 167.1332824297955,
+            "mean_latency_ms": 5.433391250233307,
+            "idle_rss_mib": 13.8125,
+            "sampled_peak_rss_mib": 39.34375,
+            "requests_per_second_range": [
+              4807.437158269776,
+              6042.961606529303
+            ]
+          },
+          "optimized-1": {
+            "requests_per_second": 6826.600130330429,
+            "cpu_percent": 98.13643467773278,
+            "cpu_us_per_request": 143.75594410710366,
+            "mean_latency_ms": 4.685095760662814,
+            "idle_rss_mib": 13.890625,
+            "sampled_peak_rss_mib": 39.171875,
+            "requests_per_second_range": [
+              6721.4036719631795,
+              6895.846497932557
+            ]
+          },
+          "optimized-4": {
+            "requests_per_second": 10510.11038119378,
+            "cpu_percent": 206.5212841316144,
+            "cpu_us_per_request": 200.10696140475974,
+            "mean_latency_ms": 3.0430952712951744,
+            "idle_rss_mib": 19.859375,
+            "sampled_peak_rss_mib": 39.875,
+            "requests_per_second_range": [
+              8972.262144150063,
+              11211.078322126825
+            ]
+          },
+          "caddy": {
+            "requests_per_second": 11946.649882427788,
+            "cpu_percent": 265.86220029830787,
+            "cpu_us_per_request": 226.64285274373344,
+            "mean_latency_ms": 2.6776398239452823,
+            "idle_rss_mib": 43.703125,
+            "sampled_peak_rss_mib": 64.15625,
+            "requests_per_second_range": [
+              11436.322411140278,
+              12170.976343526565
+            ]
+          }
+        }
+      },
+      "results": [
+        {
+          "errors": 0,
+          "mean_latency_ms": 6.651249253415052,
+          "requests": 19253,
+          "requests_per_second": 4807.437158269776,
+          "wall_seconds": 4.004836541,
+          "server": "before-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:49:06.323634+00:00",
+          "host_load_average_start": [
+            23.06591796875,
+            15.9462890625,
+            11.32421875
+          ],
+          "host_load_average_end": [
+            21.939453125,
+            15.83056640625,
+            11.310546875
+          ],
+          "cpu_seconds": 3.3199999999999994,
+          "cpu_percent": 82.89976297437101,
+          "cpu_us_per_request": 172.44065859865992,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.8125,
+          "sampled_peak_rss_mib": 39.34375,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 4.637169579105559,
+          "requests": 27615,
+          "requests_per_second": 6895.846497932557,
+          "wall_seconds": 4.0045845,
+          "server": "optimized-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:49:13.563244+00:00",
+          "host_load_average_start": [
+            21.939453125,
+            15.83056640625,
+            11.310546875
+          ],
+          "host_load_average_end": [
+            22.10400390625,
+            15.9658203125,
+            11.384765625
+          ],
+          "cpu_seconds": 3.9499999999999993,
+          "cpu_percent": 98.63694972599528,
+          "cpu_us_per_request": 143.03820387470574,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.890625,
+          "sampled_peak_rss_mib": 39.171875,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 3.0430952712951744,
+          "requests": 42087,
+          "requests_per_second": 10510.11038119378,
+          "wall_seconds": 4.004429875,
+          "server": "optimized-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:49:20.794483+00:00",
+          "host_load_average_start": [
+            23.37646484375,
+            16.33154296875,
+            11.54052734375
+          ],
+          "host_load_average_end": [
+            23.37646484375,
+            16.33154296875,
+            11.54052734375
+          ],
+          "cpu_seconds": 8.270000000000001,
+          "cpu_percent": 206.5212841316144,
+          "cpu_us_per_request": 196.4977308907739,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.875,
+          "sampled_peak_rss_mib": 39.90625,
+          "valid": true,
+          "workers": 4,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 2.7969407182590835,
+          "requests": 45769,
+          "requests_per_second": 11436.322411140278,
+          "wall_seconds": 4.00207325,
+          "server": "caddy",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:49:28.139422+00:00",
+          "host_load_average_start": [
+            24.06689453125,
+            16.59130859375,
+            11.66015625
+          ],
+          "host_load_average_end": [
+            24.7021484375,
+            16.8466796875,
+            11.779296875
+          ],
+          "cpu_seconds": 10.639999999999999,
+          "cpu_percent": 265.86220029830787,
+          "cpu_us_per_request": 232.4717603618169,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 43.703125,
+          "sampled_peak_rss_mib": 64.6875,
+          "valid": true,
+          "workers": 0,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 4.758337072742133,
+          "requests": 26917,
+          "requests_per_second": 6721.4036719631795,
+          "wall_seconds": 4.004669458,
+          "server": "optimized-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:49:35.321470+00:00",
+          "host_load_average_start": [
+            24.7021484375,
+            16.8466796875,
+            11.779296875
+          ],
+          "host_load_average_end": [
+            24.2451171875,
+            16.88232421875,
+            11.8212890625
+          ],
+          "cpu_seconds": 3.9299999999999997,
+          "cpu_percent": 98.13544017095255,
+          "cpu_us_per_request": 146.00438384663966,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.875,
+          "sampled_peak_rss_mib": 39.171875,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 3.5651974683392735,
+          "requests": 35912,
+          "requests_per_second": 8972.262144150063,
+          "wall_seconds": 4.002558042,
+          "server": "optimized-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:49:42.545426+00:00",
+          "host_load_average_start": [
+            23.02392578125,
+            16.75146484375,
+            11.8046875
+          ],
+          "host_load_average_end": [
+            23.58251953125,
+            16.97119140625,
+            11.9111328125
+          ],
+          "cpu_seconds": 7.2700000000000005,
+          "cpu_percent": 181.6338432500862,
+          "cpu_us_per_request": 202.4392960570283,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.859375,
+          "sampled_peak_rss_mib": 39.875,
+          "valid": true,
+          "workers": 4,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 2.6282733670834104,
+          "requests": 48711,
+          "requests_per_second": 12170.976343526565,
+          "wall_seconds": 4.002226167,
+          "server": "caddy",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:49:49.745937+00:00",
+          "host_load_average_start": [
+            23.58251953125,
+            16.97119140625,
+            11.9111328125
+          ],
+          "host_load_average_end": [
+            23.53564453125,
+            17.07080078125,
+            11.97607421875
+          ],
+          "cpu_seconds": 11.040000000000001,
+          "cpu_percent": 275.8464799173355,
+          "cpu_us_per_request": 226.64285274373344,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 43.234375,
+          "sampled_peak_rss_mib": 64.15625,
+          "valid": true,
+          "workers": 0,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 5.292310737984047,
+          "requests": 24197,
+          "requests_per_second": 6042.961606529303,
+          "wall_seconds": 4.004162458,
+          "server": "before-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:49:56.929937+00:00",
+          "host_load_average_start": [
+            21.89111328125,
+            16.8369140625,
+            11.92333984375
+          ],
+          "host_load_average_end": [
+            20.6181640625,
+            16.65673828125,
+            11.88818359375
+          ],
+          "cpu_seconds": 3.95,
+          "cpu_percent": 98.64734614121893,
+          "cpu_us_per_request": 163.243377278175,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.8125,
+          "sampled_peak_rss_mib": 39.328125,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 2.853095110638203,
+          "requests": 44876,
+          "requests_per_second": 11211.078322126825,
+          "wall_seconds": 4.002826375,
+          "server": "optimized-4",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:50:04.147054+00:00",
+          "host_load_average_start": [
+            20.6181640625,
+            16.65673828125,
+            11.88818359375
+          ],
+          "host_load_average_end": [
+            20.48828125,
+            16.6953125,
+            11.9296875
+          ],
+          "cpu_seconds": 8.979999999999999,
+          "cpu_percent": 224.34148171115714,
+          "cpu_us_per_request": 200.10696140475974,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 19.859375,
+          "sampled_peak_rss_mib": 39.703125,
+          "valid": true,
+          "workers": 4,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 2.6776398239452823,
+          "requests": 47809,
+          "requests_per_second": 11946.649882427788,
+          "wall_seconds": 4.001875042,
+          "server": "caddy",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:50:11.419522+00:00",
+          "host_load_average_start": [
+            19.40771484375,
+            16.5341796875,
+            11.900390625
+          ],
+          "host_load_average_end": [
+            20.81640625,
+            16.87353515625,
+            12.04736328125
+          ],
+          "cpu_seconds": 10.56,
+          "cpu_percent": 263.87630521123106,
+          "cpu_us_per_request": 220.8789140120061,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 43.75,
+          "sampled_peak_rss_mib": 63.4375,
+          "valid": true,
+          "workers": 0,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 5.433391250233307,
+          "requests": 23574,
+          "requests_per_second": 5885.469889895474,
+          "wall_seconds": 4.005457583,
+          "server": "before-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:50:18.684224+00:00",
+          "host_load_average_start": [
+            20.81640625,
+            16.87353515625,
+            12.04736328125
+          ],
+          "host_load_average_end": [
+            19.8701171875,
+            16.74267578125,
+            12.029296875
+          ],
+          "cpu_seconds": 3.9399999999999995,
+          "cpu_percent": 98.36579013399577,
+          "cpu_us_per_request": 167.1332824297955,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.796875,
+          "sampled_peak_rss_mib": 39.359375,
+          "valid": true,
+          "workers": 1,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 4.685095760662814,
+          "requests": 27338,
+          "requests_per_second": 6826.600130330429,
+          "wall_seconds": 4.004628875,
+          "server": "optimized-1",
+          "concurrency": 32,
+          "measurement_started": "2026-11-24T15:50:25.912846+00:00",
+          "host_load_average_start": [
+            19.64013671875,
+            16.74658203125,
+            12.05810546875
+          ],
+          "host_load_average_end": [
+            19.64013671875,
+            16.74658203125,
+            12.05810546875
+          ],
+          "cpu_seconds": 3.93,
+          "cpu_percent": 98.13643467773278,
+          "cpu_us_per_request": 143.75594410710366,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.890625,
+          "sampled_peak_rss_mib": 39.15625,
+          "valid": true,
+          "workers": 1,
+          "run": 3
+        }
+      ]
+    },
+    "recheck-4": {
+      "response_bytes": 512,
+      "seconds": 5,
+      "runs": 3,
+      "initial_order": [
+        "before-1",
+        "optimized-1"
+      ],
+      "caddy_single_gomaxprocs": null,
+      "total_requests": 438389,
+      "medians": {
+        "4": {
+          "before-1": {
+            "requests_per_second": 14387.031234616796,
+            "cpu_percent": 90.59641843367076,
+            "cpu_us_per_request": 62.97089160110094,
+            "mean_latency_ms": 0.27787104766604576,
+            "idle_rss_mib": 13.828125,
+            "sampled_peak_rss_mib": 28.75,
+            "requests_per_second_range": [
+              11142.272322038918,
+              15718.672506500558
+            ]
+          },
+          "optimized-1": {
+            "requests_per_second": 16413.30883173321,
+            "cpu_percent": 85.597438496653,
+            "cpu_us_per_request": 52.15123859191656,
+            "mean_latency_ms": 0.2434840980760092,
+            "idle_rss_mib": 13.84375,
+            "sampled_peak_rss_mib": 28.671875,
+            "requests_per_second_range": [
+              13039.715631388632,
+              16973.54708805363
+            ]
+          }
+        }
+      },
+      "results": [
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.2543316505929055,
+          "requests": 78596,
+          "requests_per_second": 15718.672506500558,
+          "wall_seconds": 5.000167792,
+          "server": "before-1",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:53:43.842253+00:00",
+          "host_load_average_start": [
+            6.01953125,
+            11.83544921875,
+            10.9609375
+          ],
+          "host_load_average_end": [
+            6.177734375,
+            11.771484375,
+            10.943359375
+          ],
+          "cpu_seconds": 4.72,
+          "cpu_percent": 94.39683219334653,
+          "cpu_us_per_request": 60.053946765738715,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.84375,
+          "sampled_peak_rss_mib": 28.765625,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.2355145995640391,
+          "requests": 84870,
+          "requests_per_second": 16973.54708805363,
+          "wall_seconds": 5.000133417,
+          "server": "optimized-1",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:53:52.115493+00:00",
+          "host_load_average_start": [
+            5.6826171875,
+            11.57568359375,
+            10.87890625
+          ],
+          "host_load_average_end": [
+            6.1884765625,
+            11.58251953125,
+            10.88525390625
+          ],
+          "cpu_seconds": 4.42,
+          "cpu_percent": 88.39764125037946,
+          "cpu_us_per_request": 52.079651231294925,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.828125,
+          "sampled_peak_rss_mib": 28.65625,
+          "valid": true,
+          "workers": 1,
+          "run": 1
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.3065808817367565,
+          "requests": 65202,
+          "requests_per_second": 13039.715631388632,
+          "wall_seconds": 5.000262417,
+          "server": "optimized-1",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:54:00.313282+00:00",
+          "host_load_average_start": [
+            6.1884765625,
+            11.58251953125,
+            10.88525390625
+          ],
+          "host_load_average_end": [
+            6.25341796875,
+            11.50634765625,
+            10.8623046875
+          ],
+          "cpu_seconds": 3.4199999999999995,
+          "cpu_percent": 68.3964103238384,
+          "cpu_us_per_request": 52.45237876138768,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.875,
+          "sampled_peak_rss_mib": 28.703125,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.27787104766604576,
+          "requests": 71938,
+          "requests_per_second": 14387.031234616796,
+          "wall_seconds": 5.000197666,
+          "server": "before-1",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:54:08.575175+00:00",
+          "host_load_average_start": [
+            14.24072265625,
+            13.07470703125,
+            11.41943359375
+          ],
+          "host_load_average_end": [
+            14.62158203125,
+            13.1728515625,
+            11.46337890625
+          ],
+          "cpu_seconds": 4.529999999999999,
+          "cpu_percent": 90.59641843367076,
+          "cpu_us_per_request": 62.97089160110094,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.828125,
+          "sampled_peak_rss_mib": 28.671875,
+          "valid": true,
+          "workers": 1,
+          "run": 2
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.35868749332304267,
+          "requests": 55714,
+          "requests_per_second": 11142.272322038918,
+          "wall_seconds": 5.000236791,
+          "server": "before-1",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:54:16.863973+00:00",
+          "host_load_average_start": [
+            14.33154296875,
+            13.13671875,
+            11.46044921875
+          ],
+          "host_load_average_end": [
+            15.666015625,
+            13.43310546875,
+            11.57470703125
+          ],
+          "cpu_seconds": 3.59,
+          "cpu_percent": 71.79659984226535,
+          "cpu_us_per_request": 64.43622787809169,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.8125,
+          "sampled_peak_rss_mib": 28.75,
+          "valid": true,
+          "workers": 1,
+          "run": 3
+        },
+        {
+          "errors": 0,
+          "mean_latency_ms": 0.2434840980760092,
+          "requests": 82069,
+          "requests_per_second": 16413.30883173321,
+          "wall_seconds": 5.000149625,
+          "server": "optimized-1",
+          "concurrency": 4,
+          "measurement_started": "2026-11-24T15:54:25.260435+00:00",
+          "host_load_average_start": [
+            15.666015625,
+            13.43310546875,
+            11.57470703125
+          ],
+          "host_load_average_end": [
+            16.1728515625,
+            13.5751953125,
+            11.6357421875
+          ],
+          "cpu_seconds": 4.28,
+          "cpu_percent": 85.597438496653,
+          "cpu_us_per_request": 52.15123859191656,
+          "idle_cpu_percent": 0.0,
+          "idle_rss_mib": 13.84375,
+          "sampled_peak_rss_mib": 28.671875,
+          "valid": true,
+          "workers": 1,
+          "run": 3
+        }
+      ]
+    }
+  }
+}

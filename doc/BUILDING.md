@@ -68,8 +68,8 @@ python3 ci/package-release.py macos-arm64 ./vaddy
 
 Compiler and bootstrap revisions are pinned in [ci/toolchain.env](../ci/toolchain.env):
 
-- V: `vlang/v`, `e777ef47fdaf31ae7d66fac69f618cf39495c5da`.
-- C bootstrap: `vlang/vc`, `8932ad13ae053610292624bb2208865592f8778a`.
+- V: `vlang/v`, `47889c4b8d10febf33b57ba9c9ef7dba470622c2`.
+- C bootstrap: `vlang/vc`, `0af2881bd6d8a0d3d744b7fc183cfb5f9c5a85e8`.
 
 The jobs build the compiler from source at these commits. Archived benchmarks
 record their own compiler revisions.

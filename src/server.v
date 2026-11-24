@@ -96,6 +96,10 @@ mut:
 
 struct Server {
 mut:
+	// Reads append only the bytes returned by the socket to a connection buffer.
+	// Each reactor can reuse the same scratch space across all its connections.
+	read_scratch  []u8 = []u8{len: 16384}
+	header_scratch Buffer
 	runtime_store ?&RuntimeStore
 	retired       []&Runtime
 	run_id        string
@@ -269,20 +273,30 @@ fn (mut s Server) pause_accepts() {
 	s.watch(s.https_fd, 0) or {}
 }
 
+// Site and route directives belong to the immutable runtime configuration.
+fn combined_directives[T](site []T, route []T) []T {
+	if route.len == 0 { return site }
+	if site.len == 0 { return route }
+	mut combined := site.clone()
+	combined << route
+	return combined
+}
+
 fn (mut s Server) begin_request(mut c Connection) !bool {
-	raw := c.request_buffer.bytes().bytestr()
-	end := raw.index('\r\n\r\n') or {
-		if raw.len >= header_limit {
+	input := c.request_buffer.bytes()
+	end := header_end(input)
+	if end < 0 {
+		if input.len >= header_limit {
 			s.respond(mut c, 431, 'Request Header Fields Too Large', 'Headers too large\n', '')
 		}
 		return false
 	}
-	m := parse_message_reuse(raw[..end + 4], true, false, c.request.fields) or {
+	c.request = parse_message_reuse(input[..end + 4].bytestr(), true, false, c.request.fields) or {
 		s.respond(mut c, 400, 'Bad Request', 'Bad Request\n', '')
 		return false
 	}
 	c.request_buffer.skip(end + 4)
-	c.request = m
+	m := &c.request
 	c.have_request = true
 	c.access_logged = false
 	c.log_status = 0
@@ -309,15 +323,15 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		s.respond(mut c, 421, 'Misdirected Request', 'Unknown host\n', '')
 		return false
 	}
-	site := cfg.sites[c.site]
-	c.response_headers = site.response_headers.clone()
-	c.header_values = HeaderValues{ uri: m.uri, method: m.method, fields: m.fields.clone(), host: m.host_name, hostport: m.host, port: m.host_port, scheme: if isnil(c.tls) {
+	site := &cfg.sites[c.site]
+	c.response_headers = site.response_headers
+	c.header_values = HeaderValues{ uri: m.uri, method: m.method, fields: m.fields, host: m.host_name, hostport: m.host, port: m.host_port, scheme: if isnil(c.tls) {
 		'http'
 	} else {
 		'https'
 	}, remote_host: c.ip, remote_port: c.remote_port }
 	c.log_early = map[string]json2.Any{}
-	c.log_rules = site.log_rules.clone()
+	c.log_rules = site.log_rules
 	c.capture_early_logs(site.log_rules)
 	c.access_targets = access_targets(cfg, site, logs, c.log_rules, c.header_values)
 	if isnil(c.tls) {
@@ -353,10 +367,12 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		s.respond(mut c, 404, 'Not Found', 'Not Found\n', '')
 		return false
 	}
-	c.capture_early_logs(route.log_rules)
-	c.log_rules << route.log_rules
-	c.access_targets = access_targets(cfg, site, logs, c.log_rules, c.header_values)
-	c.response_headers << route.response_headers
+	if route.log_rules.len > 0 {
+		c.capture_early_logs(route.log_rules)
+		c.log_rules = combined_directives(site.log_rules, route.log_rules)
+		c.access_targets = access_targets(cfg, site, logs, c.log_rules, c.header_values)
+	}
+	c.response_headers = combined_directives(site.response_headers, route.response_headers)
 	if text := route.respond {
 		body := expand_placeholders_limited(text, c.header_values, respond_body_limit) or {
 			s.respond(mut c, 500, 'Internal Server Error', '', '')
@@ -370,10 +386,14 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		return false
 	}
 	c.header_values.upstream_hostport = route.upstream.trim_string_left('https://')
-	mut edits := site.request_headers.clone()
-	edits << route.request_headers
-	mut handler_fields := m.fields.clone()
-	apply_header_edits(mut handler_fields, edits.filter(!it.proxy), c.header_values, 0, false)!
+	edits := combined_directives(site.request_headers, route.request_headers)
+	handler_fields := if edits.any(!it.proxy) {
+		mut fields := m.fields.clone()
+		apply_header_edits(mut fields, edits.filter(!it.proxy), c.header_values, 0, false)!
+		fields
+	} else {
+		m.fields
+	}
 	encoding := if route.encode.enabled { route.encode } else { site.encode }
 	if encoding.enabled && header_edit_matches(encoding.filter, [], c.header_values, 0) {
 		c.output.config = encoding
@@ -408,26 +428,27 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		}
 		s.owners[c.backend] = c.fd
 	}
-	mut upstream_request := m
+	mut upstream_request := *m
 	upstream_request.fields = handler_fields
-	if c.output.name != '' {
+	if c.output.name != '' && handler_fields.any(it.lower == 'if-none-match') {
+		upstream_request.fields = handler_fields.clone()
 		for mut field in upstream_request.fields {
 			if field.lower == 'if-none-match' {
 				field = Field{ ...field, value: field.value.replace('-${c.output.name}"', '"') }
 			}
 		}
 	}
-	hosts := upstream_request.fields.filter(it.lower == 'host')
-	upstream_request.host = if hosts.len > 0 { hosts.last().value } else { '' }
-	upstream_request.fields = upstream_request.fields.filter(it.lower != 'host')
+	upstream_request.host = ''
+	for field in &handler_fields {
+		if field.lower == 'host' { upstream_request.host = field.value }
+	}
 	fallback_host := route.upstream.trim_string_left('https://')
 	host := if route.upstream.starts_with('https://') || upstream_request.host == '' {
 		fallback_host
 	} else {
 		upstream_request.host
 	}
-	upstream_request.fields << Field{'Host', 'host', host}
-	field_count := c.to_backend.request_header(upstream_request, rewrite_uri(m.uri, route.rewrite), c.ip, !isnil(c.tls), '')
+	field_count := c.to_backend.request_header(upstream_request, rewrite_uri(m.uri, route.rewrite), c.ip, !isnil(c.tls), host)
 	if edits.any(it.proxy) {
 		edit_header_buffer(mut c.to_backend, edits.filter(it.proxy), c.header_values)!
 		// Host is represented separately by Go's request type: an append replaces it.
@@ -470,29 +491,38 @@ fn (mut s Server) consume_request(mut c Connection) ! {
 	c.request_buffer.skip(n)
 }
 
-fn (mut s Server) write_response_header(mut c Connection, m Message, close bool) ! {
-	mut header := Buffer{}
-	header.response_header(m, [], close)
-	response_header_buffer(mut header, c.response_headers, c.header_values, m.status, false)!
-	if c.access_targets.len > 0 && (m.status >= 200 || m.status == 101) {
-		c.log_response_fields = buffer_header_fields(header).filter(it.lower !in [
-			'connection',
-			'transfer-encoding',
-		])
+fn (mut s Server) write_response_header(mut c Connection, m &Message, close bool) ! {
+	s.header_scratch.clear()
+	if c.response_headers.len == 0 {
+		s.header_scratch.response_header(m, [], close)
+	} else {
+		mut fields := []Field{cap: m.fields.len + 3}
+		for field in &m.fields {
+			if !hop_header(field.lower, m.connection) { fields << *field }
+		}
+		for field in m.response_framing_fields(close) {
+			if field.name != '' { fields << field }
+		}
+		edited := response_fields_with_edits(mut fields, c.response_headers, c.header_values, m.status, false)!
+		s.header_scratch.append_header_fields(m.start, edited)!
 	}
-	if c.to_client.room() < header.len() { return error('response header output exceeds buffer') }
-	c.to_client.add(header.bytes())
+	if c.access_targets.len > 0 && (m.status >= 200 || m.status == 101) {
+		c.log_response_fields = buffer_header_fields(s.header_scratch).filter(it.lower !in ['connection', 'transfer-encoding'])
+	}
+	if c.to_client.room() < s.header_scratch.len() { return error('response header output exceeds buffer') }
+	c.to_client.add(s.header_scratch.bytes())
 }
 
 fn (mut s Server) consume_response(mut c Connection) ! {
 	for !c.have_response {
-		raw := c.response_buffer.bytes().bytestr()
-		end := raw.index('\r\n\r\n') or {
-			if raw.len >= header_limit { return error('upstream headers too large') }
+		input := c.response_buffer.bytes()
+		end := header_end(input)
+		if end < 0 {
+			if input.len >= header_limit { return error('upstream headers too large') }
 			return
 		}
-		mut m := parse_message_reuse(raw[..end + 4], false, c.request.method == 'HEAD', c.response.fields)!
 		if c.to_client.room() < end + 128 { return }
+		mut m := parse_message_reuse(input[..end + 4].bytestr(), false, c.request.method == 'HEAD', c.response.fields)!
 		c.response_buffer.skip(end + 4)
 		if m.status == 101 {
 			if !c.request.upgrade || !m.upgrade { return error('unsolicited upgrade') }
@@ -624,7 +654,6 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 			c.backend_handshake_want = if err == 2 { 1 } else { 2 }
 		}
 	}
-	mut scratch := [16384]u8{}
 	// Drain each ready input until EAGAIN, then wait for another readiness event.
 	// OpenSSL may have records buffered even when the kernel socket is no longer
 	// readable, so those records must also be allowed to drive the client read.
@@ -695,14 +724,14 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 			}
 		}
 		if backend_readable && !c.local && c.have_request && c.backend >= 0 && !c.connecting && !c.backend_handshake && !(c.backend_write_len > 0 && c.backend_write_want == 1) && !c.response.frame.done && c.response_buffer.room() > 0 && c.to_client.room() >= 16384 {
-			limit := if c.response_buffer.room() < scratch.len {
+			limit := if c.response_buffer.room() < s.read_scratch.len {
 				c.response_buffer.room()
 			} else {
-				scratch.len
+				s.read_scratch.len
 			}
 			mut n := 0
 			if !isnil(c.backend_tls) {
-				n = C.vaddy_tls_read(c.backend_tls, &scratch[0], limit)
+				n = C.vaddy_tls_read(c.backend_tls, s.read_scratch.data, limit)
 				if n <= 0 {
 					err := C.vaddy_tls_error(c.backend_tls, n)
 					backend_readable = false
@@ -717,13 +746,13 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 					c.backend_read_want = 1
 				}
 			} else {
-				n = int(C.vaddy_recv(c.backend, &scratch[0], u64(limit), 0))
+				n = int(C.vaddy_recv(c.backend, s.read_scratch.data, u64(limit), 0))
 				if n < 0 { backend_readable = false }
 				if n < 0 && C.vaddy_again() == 0 { return error('upstream read failed') }
 				if n == 0 { s.backend_eof(mut c)! }
 			}
 			if n > 0 {
-				c.response_buffer.add(scratch[..n])
+				c.response_buffer.add(s.read_scratch[..n])
 				progress = true
 			}
 		}
@@ -736,7 +765,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		if client_readable && can_read && !(c.write_len > 0 && c.write_want == 1) {
 			mut n := 0
 			if !isnil(c.tls) {
-				n = C.vaddy_tls_read(c.tls, &scratch[0], scratch.len)
+				n = C.vaddy_tls_read(c.tls, s.read_scratch.data, s.read_scratch.len)
 				if n <= 0 {
 					err := C.vaddy_tls_error(c.tls, n)
 					client_readable = false
@@ -749,7 +778,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 					c.read_want = 1
 				}
 			} else {
-				n = int(C.vaddy_recv(c.fd, &scratch[0], u64(scratch.len), 0))
+				n = int(C.vaddy_recv(c.fd, s.read_scratch.data, u64(s.read_scratch.len), 0))
 				if n < 0 { client_readable = false }
 				if n == 0 || (n < 0 && C.vaddy_again() == 0) {
 					c.dead = true
@@ -758,7 +787,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 			}
 			if n > 0 {
 				if !c.have_request && c.request_buffer.len() == 0 { c.started = mono_ms() }
-				c.request_buffer.add(scratch[..n])
+				c.request_buffer.add(s.read_scratch[..n])
 				s.consume_request(mut c) or { s.respond(mut c, 400, 'Bad Request', 'Bad Request\n', '') }
 				progress = true
 			}

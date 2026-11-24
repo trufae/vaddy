@@ -317,15 +317,18 @@ fn (mut b Buffer) request_header(m Message, uri string, ip string, tls bool, hos
 	b.write_string(' ')
 	b.write_string(uri)
 	b.write_string(' HTTP/1.1\r\n')
-	for field in m.fields {
+	for field in &m.fields {
 		key := field.lower
-		if hop_header(key, m.connection) || key in ['x-forwarded-for', 'x-forwarded-host',
+		if (key == 'host' && host != '') || hop_header(key, m.connection) || key in ['x-forwarded-for', 'x-forwarded-host',
 			'x-forwarded-proto', 'expect'] {
 			continue
 		}
-		b.write_string(field.name)
-		b.write_string(': ')
-		b.write_string(if key == 'host' && host != '' { host } else { field.value })
+		b.write_field(field)
+		count++
+	}
+	if host != '' {
+		b.write_string('Host: ')
+		b.write_string(host)
 		b.write_string('\r\n')
 		count++
 	}
@@ -342,22 +345,35 @@ fn (mut b Buffer) request_header(m Message, uri string, ip string, tls bool, hos
 	return count
 }
 
-fn (mut b Buffer) response_header(m Message, remove []string, close bool) {
+fn (m &Message) response_framing_fields(close bool) [3]Field {
+	mut fields := [3]Field{}
+	if m.frame.kind == .chunked { fields[0] = Field{'Transfer-Encoding', 'transfer-encoding', 'chunked'} }
+	if m.status == 101 && m.upgrade {
+		fields[1] = Field{'Connection', 'connection', 'Upgrade'}
+		fields[2] = Field{'Upgrade', 'upgrade', 'websocket'}
+	} else if close {
+		fields[1] = Field{'Connection', 'connection', 'close'}
+	}
+	return fields
+}
+
+fn (mut b Buffer) write_field(field &Field) {
+	b.write_string(field.name)
+	b.write_string(': ')
+	b.write_string(field.value)
+	b.write_string('\r\n')
+}
+
+fn (mut b Buffer) response_header(m &Message, remove []string, close bool) {
 	b.write_string(m.start)
 	b.write_string('\r\n')
-	for field in m.fields {
+	for field in &m.fields {
 		key := field.lower
 		if key in remove || hop_header(key, m.connection) { continue }
-		b.write_string(field.name)
-		b.write_string(': ')
-		b.write_string(field.value)
-		b.write_string('\r\n')
+		b.write_field(field)
 	}
-	if m.frame.kind == .chunked { b.write_string('Transfer-Encoding: chunked\r\n') }
-	if m.status == 101 && m.upgrade {
-		b.write_string('Connection: Upgrade\r\nUpgrade: websocket\r\n')
-	} else if close {
-		b.write_string('Connection: close\r\n')
+	for field in m.response_framing_fields(close) {
+		if field.name != '' { b.write_field(field) }
 	}
 	b.write_string('\r\n')
 }
@@ -366,6 +382,15 @@ struct Buffer {
 mut:
 	data strings.Builder
 	pos  int
+}
+
+fn header_end(data []u8) int {
+	for i in 3 .. data.len {
+		if data[i] == `\n` && data[i - 1] == `\r` && data[i - 2] == `\n` && data[i - 3] == `\r` {
+			return i - 3
+		}
+	}
+	return -1
 }
 
 fn (b &Buffer) len() int { return b.data.len - b.pos }

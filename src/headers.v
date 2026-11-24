@@ -291,16 +291,22 @@ fn buffer_header_fields(buffer Buffer) []Field {
 }
 
 fn write_header_fields(mut buffer Buffer, fields []Field) ! {
-	if fields.len > 128 { return error('too many output headers') }
+	start := buffer.bytes().bytestr().all_before('\r\n')
 	mut output := Buffer{}
-	output.write_string(buffer.bytes().bytestr().all_before('\r\n') + '\r\n')
-	for field in fields {
-		if output.len() + field.name.len + field.value.len + 6 > header_limit { return error('edited headers too large') }
-		output.write_string('${field.name}: ${field.value}\r\n')
-	}
-	output.write_string('\r\n')
+	output.append_header_fields(start, fields)!
 	buffer.clear()
 	buffer.add(output.bytes())
+}
+
+fn (mut b Buffer) append_header_fields(start string, fields []Field) ! {
+	if fields.len > 128 { return error('too many output headers') }
+	mut size := start.len + 4 // Start-line and final CRLFs.
+	for field in &fields { size += field.name.len + field.value.len + 4 }
+	if size > header_limit { return error('edited headers too large') }
+	b.write_string(start)
+	b.write_string('\r\n')
+	for field in &fields { b.write_field(field) }
+	b.write_string('\r\n')
 }
 
 fn apply_header_group(mut fields []Field, edits []HeaderEdit, values HeaderValues, status int) ! {
@@ -341,6 +347,7 @@ fn apply_header_group(mut fields []Field, edits []HeaderEdit, values HeaderValue
 }
 
 fn apply_header_edits(mut fields []Field, edits []HeaderEdit, values HeaderValues, status int, reverse bool) ! {
+	if edits.len == 0 { return }
 	mut groups := []string{}
 	for edit in edits { if edit.group !in groups { groups << edit.group } }
 	if reverse { groups.reverse_in_place() }
@@ -356,15 +363,25 @@ fn edit_header_buffer(mut buffer Buffer, edits []HeaderEdit, values HeaderValues
 
 fn response_header_buffer(mut buffer Buffer, edits []HeaderEdit, values HeaderValues, status int, local bool) ! {
 	if edits.len == 0 { return }
+	mut fields := buffer_header_fields(buffer)
+	edited := response_fields_with_edits(mut fields, edits, values, status, local)!
+	write_header_fields(mut buffer, edited)!
+}
+
+fn response_fields_with_edits(mut fields []Field, edits []HeaderEdit, values HeaderValues, status int, local bool) ![]Field {
 	mut immediate := []Field{}
 	apply_header_edits(mut immediate, edits.filter(!it.deferred && !it.proxy), values, status, false)!
-	mut fields := buffer_header_fields(buffer)
 	apply_header_edits(mut fields, edits.filter(it.proxy), values, status, false)!
+	deferred := edits.filter(it.deferred && !it.proxy)
+	if immediate.len == 0 {
+		apply_header_edits(mut fields, deferred, values, status, true)!
+		return fields
+	}
 	if local {
 		// Static responses overwrite fields they own; proxies append upstream fields.
 		for field in fields { immediate = immediate.filter(it.lower != field.lower) }
 	}
 	immediate << fields
-	apply_header_edits(mut immediate, edits.filter(it.deferred && !it.proxy), values, status, true)!
-	write_header_fields(mut buffer, immediate)!
+	apply_header_edits(mut immediate, deferred, values, status, true)!
+	return immediate
 }

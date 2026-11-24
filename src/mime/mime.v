@@ -9,17 +9,18 @@ const ph_masks = [u64(0), 0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFFFFFF, 0xFF
 	0xFFFFFFFFFFFFFF, max_u64, max_u64, max_u64, max_u64, max_u64, max_u64, max_u64, max_u64, max_u64,
 	max_u64, max_u64, max_u64, max_u64, max_u64, max_u64, max_u64, max_u64]!
 
-// Byte assembly supports unaligned input and either host byte order.
-@[direct_array_access; inline; unsafe]
-fn word(p &u8) u64 {
-	return unsafe {
-		u64(p[0]) | (u64(p[1]) << 8) | (u64(p[2]) << 16) | (u64(p[3]) << 24) |
-			(u64(p[4]) << 32) | (u64(p[5]) << 40) | (u64(p[6]) << 48) | (u64(p[7]) << 56)
-	}
+// Check the full window once before assembling the unaligned little-endian word.
+@[direct_array_access; inline]
+fn word(s string, start int) u64 {
+	if start < 0 || start > s.len - 8 { return 0 }
+	return u64(s[start]) | (u64(s[start + 1]) << 8) | (u64(s[start + 2]) << 16) |
+		(u64(s[start + 3]) << 24) | (u64(s[start + 4]) << 32) | (u64(s[start + 5]) << 40) |
+		(u64(s[start + 6]) << 48) | (u64(s[start + 7]) << 56)
 }
 
 // lookup returns the media type for an exact lowercase extension, or '' if unknown.
 // Its perfect hash and full-key check use static tables without allocating.
+// Length checks and hash masks bound the indexes into the generated tables.
 @[direct_array_access; inline]
 pub fn lookup(ext string) string {
 	length := ext.len
@@ -29,9 +30,9 @@ pub fn lookup(ext string) string {
 	mut middle := u64(0)
 	if length >= 8 {
 		// Every input word is entirely inside ext.
-		first = unsafe { word(ext.str) }
-		if length > 8 { last = unsafe { word(ext.str + length - 8) } }
-		if length > 16 { middle = unsafe { word(ext.str + 8) } }
+		first = word(ext, 0)
+		if length > 8 { last = word(ext, length - 8) }
+		if length > 16 { middle = word(ext, 8) }
 	} else {
 		mut place := u64(1)
 		for i in 0 .. length {
@@ -43,13 +44,12 @@ pub fn lookup(ext string) string {
 	hash := u32(x ^ (x >> 32))
 	slot := ph_slots[((hash >> ph_slot_shift) + ph_disp[hash & ph_bmask]) & ph_tmask]
 	stored_length := int((slot >> ph_mbits) & 31)
-	// Padding covers all three reads even for an empty slot or a shorter stored key.
-	p := unsafe { ph_blob.str + int(slot >> (ph_mbits + 5)) + 8 }
+	if stored_length != length { return '' }
+	// The generated blob pads the final key so short keys have a full first word.
+	start := int(slot >> (ph_mbits + 5)) + 8
 	mask := ph_masks[length]
-	mut equal := u64(stored_length == length)
-	equal &= u64((first & mask) == (unsafe { word(p) } & mask))
-	if length > 8 { equal &= u64(last == unsafe { word(p + stored_length - 8) }) }
-	if length > 16 { equal &= u64(middle == unsafe { word(p + 8) }) }
-	index := if equal != 0 { slot & ((u32(1) << ph_mbits) - 1) } else { u32(0) }
-	return mime_names[index]
+	if (first & mask) != (word(ph_blob, start) & mask) { return '' }
+	if length > 8 && last != word(ph_blob, start + length - 8) { return '' }
+	if length > 16 && middle != word(ph_blob, start + 8) { return '' }
+	return mime_names[slot & ((u32(1) << ph_mbits) - 1)]
 }

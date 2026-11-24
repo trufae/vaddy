@@ -42,7 +42,7 @@ fn test_every_generated_extension_and_non_ascii_misses() {
 	assert seen.len == 1203
 }
 
-fn test_long_misses_probe_padded_short_keys_safely() {
+fn test_long_unknown_extensions() {
 	for length in 8 .. 25 {
 		for i in 0 .. 256 {
 			assert lookup('z'.repeat(length - 4) + '${i:04}') == ''

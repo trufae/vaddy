@@ -2,6 +2,12 @@ module main
 
 import sync.stdatomic
 
+// A channel entry carries mutable ownership of one connection to its reactor.
+struct IncomingConnection {
+mut:
+	client &Connection
+}
+
 // Only connection ownership crosses reactors. Requests and their buffers stay
 // on one worker; the shared counters change only on admission, close and shutdown.
 @[heap]
@@ -10,7 +16,7 @@ mut:
 	active_streams i64
 	active   i64
 	stopping i64
-	inboxes  []chan &Connection
+	inboxes  []chan IncomingConnection
 	wake_fds []int
 	threads  []thread
 }
@@ -45,7 +51,7 @@ fn (mut s Server) dispatch_client(mut c Connection) {
 	}
 	// A queue can hold the entire global connection limit, so admitted connections
 	// cannot exhaust it. Publish ownership before sending the readiness notification.
-	s.pool.inboxes[slot - 1] <- c
+	s.pool.inboxes[slot - 1] <- IncomingConnection{client: c}
 	if C.vaddy_notify(s.pool.wake_fds[slot - 1]) != 0 {
 		stdatomic.store_i64(&s.pool.stopping, 1)
 	}
@@ -58,7 +64,7 @@ fn (mut s Server) drain_incoming() {
 	for {
 		select {
 			received := <-s.incoming {
-				mut c := unsafe { received }
+				mut c := received.client
 				s.register_client(mut c)
 			}
 			else {
@@ -83,7 +89,7 @@ fn (mut s Server) start_workers() ! {
 			C.vaddy_close(fds[1])
 			return error('cannot create worker event queue')
 		}
-		incoming := chan &Connection{cap: s.opts.max_connections}
+		incoming := chan IncomingConnection{cap: s.opts.max_connections}
 		mut worker := &Server{
 			cfg:        s.cfg
 			opts:       s.opts
@@ -129,7 +135,7 @@ fn (mut s Server) stop_workers() {
 		for {
 			select {
 				received := <-inbox {
-					mut c := unsafe { received }
+					mut c := received.client
 					s.close_client(mut c)
 				}
 				else {

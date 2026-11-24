@@ -14,6 +14,8 @@
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
 
+static void vaddy_address_free(void *address) { free(address); }
+
 static int vaddy_peer_port(int64_t fd) {
     struct sockaddr_storage address;
 #ifdef _WIN32
@@ -28,16 +30,19 @@ static int vaddy_peer_port(int64_t fd) {
     return 0;
 }
 static void vaddy_tls_details(void *ssl, int *version, int *cipher, int *resumed,
-                               char *name, int name_len, char *proto, int proto_len) {
+                               char *name, int name_cap, int *name_len,
+                               char *proto, int proto_cap, int *proto_len) {
     *version = SSL_version(ssl);
     *cipher = SSL_CIPHER_get_protocol_id(SSL_get_current_cipher(ssl));
     *resumed = SSL_session_reused(ssl);
     const char *sni = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
-    snprintf(name, name_len, "%s", sni ? sni : "");
+    int name_written = snprintf(name, name_cap, "%s", sni ? sni : "");
+    *name_len = name_written < 0 ? 0 : (name_written < name_cap ? name_written : name_cap - 1);
     const unsigned char *alpn = NULL;
     unsigned int alpn_len = 0;
     SSL_get0_alpn_selected(ssl, &alpn, &alpn_len);
-    snprintf(proto, proto_len, "%.*s", (int)alpn_len, alpn ? (const char *)alpn : "");
+    int proto_written = snprintf(proto, proto_cap, "%.*s", (int)alpn_len, alpn ? (const char *)alpn : "");
+    *proto_len = proto_written < 0 ? 0 : (proto_written < proto_cap ? proto_written : proto_cap - 1);
 }
 static long long vaddy_cert_seconds(const char *path, int lifetime) {
     FILE *f = fopen(path, "r"); if (!f) return -1;

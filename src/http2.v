@@ -5,7 +5,14 @@ import sync.stdatomic
 // HTTP/2 framing and HPACK live in nghttp2. Each stream uses the same bounded
 // request/proxy state machine as HTTP/1; all streams stay on their socket's worker.
 fn h2_request_headers(stream &C.vaddy_h2_stream) !string {
-	fields := unsafe { stream.headers.vbytes(stream.header_len) }.bytestr().split('\x00')
+	// nghttp2's callbacks append a NUL after each field. Split copies the
+	// fields before this view of the stream's header buffer goes out of scope.
+	packed := if stream.header_len > 0 {
+		string{str: stream.headers, len: stream.header_len - 1}
+	} else {
+		''
+	}
+	fields := packed.split('\x00')
 	mut method := ''
 	mut path := ''
 	mut authority := ''
@@ -169,7 +176,7 @@ fn (mut s Server) pump_h2(mut parent Connection, event_fd int) ! {
 			}
 		}
 		mut state := C.vaddy_h2_first(parent.h2)
-		for state != unsafe { nil } {
+		for !isnil(state) {
 			mut next := state.next
 			if state.closed != 0 {
 				s.close_h2_stream(mut parent, state.id)

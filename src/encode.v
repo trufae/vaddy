@@ -26,7 +26,7 @@ mut:
 	message Message
 	frame Framing
 	pending Buffer
-	codec &C.vaddy_encoder = unsafe { nil }
+	codec &C.vaddy_encoder = C.NULL
 }
 
 fn parse_encode(d Directive) !EncodeConfig {
@@ -119,7 +119,7 @@ fn encodable_type(value string) bool {
 }
 
 fn (mut c Connection) close_encoder() {
-	if c.output.codec != unsafe { nil } { C.vaddy_encoder_free(c.output.codec); c.output.codec = unsafe { nil } }
+	if !isnil(c.output.codec) { C.vaddy_encoder_free(c.output.codec); c.output.codec = C.NULL }
 }
 
 fn (c &Connection) has_output_work() bool {
@@ -174,7 +174,7 @@ fn (mut c Connection) prepare_output() ! {
 				kind := if c.output.name == 'gzip' { 1 } else { 2 }
 				level := if kind == 1 { c.output.config.gzip_level } else { c.output.config.zstd_level }
 				c.output.codec = C.vaddy_encoder_new(kind, level)
-				if c.output.codec == unsafe { nil } { return error('cannot initialize response encoder') }
+				if isnil(c.output.codec) { return error('cannot initialize response encoder') }
 				m.frame = Framing{kind: .chunked}
 			}
 		}
@@ -184,9 +184,9 @@ fn (mut c Connection) prepare_output() ! {
 		c.wire_output.add(header.bytes())
 		if c.access_targets.len > 0 { c.log_response_fields = m.fields.filter(!hop_header(it.lower, m.connection)) }
 		c.output.decided = true
-		if c.output.codec != unsafe { nil } { c.log_size = 0 }
+		if !isnil(c.output.codec) { c.log_size = 0 }
 	}
-	if c.output.codec == unsafe { nil } {
+	if isnil(c.output.codec) {
 		c.to_client.transfer_to(mut c.wire_output)
 		c.output.done = c.response.frame.done && c.to_client.len() == 0
 		return

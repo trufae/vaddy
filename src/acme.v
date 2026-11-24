@@ -348,7 +348,7 @@ fn certificate_due(cfg Config, opts Options) bool {
 	}
 	key := os.join_path(dir, 'key.pem')
 	ctx := C.vaddy_tls_context(&char(cert.str), &char(key.str))
-	if ctx == unsafe { nil } { return true }
+	if isnil(ctx) { return true }
 	C.vaddy_tls_ctx_free(ctx)
 	return false
 }
@@ -383,7 +383,7 @@ fn provision_certificate(cfg Config, opts Options, exe string) ! {
 		return error('issued certificate is already expired')
 	}
 	ctx := C.vaddy_tls_context(&char(cert.str), &char(key.str))
-	if ctx == unsafe { nil } { return error('issued certificate does not match private key') }
+	if isnil(ctx) { return error('issued certificate does not match private key') }
 	C.vaddy_tls_ctx_free(ctx)
 	os.write_file(os.join_path(dir, 'policy'), cert_policy(cfg))!
 	atomic_write(os.join_path(opts.data, 'current'), name + '\n')!

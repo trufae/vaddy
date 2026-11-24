@@ -17,14 +17,18 @@ fn log_headers(fields []Field) map[string][]string {
 
 fn request_log(c &Connection) log.Request {
 	mut tls := ?log.TLS(none)
-	if c.tls != unsafe { nil } {
+	if !isnil(c.tls) {
 		mut version := 0
 		mut cipher := 0
 		mut resumed := 0
 		mut name := [256]char{}
 		mut proto := [256]char{}
-		C.vaddy_tls_details(c.tls, &version, &cipher, &resumed, &name[0], name.len, &proto[0], proto.len)
-		tls = log.TLS{resumed != 0, version, cipher, unsafe { cstring_to_vstring(&proto[0]) }, unsafe { cstring_to_vstring(&name[0]) }, false}
+		mut name_len := 0
+		mut proto_len := 0
+		C.vaddy_tls_details(c.tls, &version, &cipher, &resumed, &name[0], name.len, &name_len,
+			&proto[0], proto.len, &proto_len)
+		tls = log.TLS{resumed != 0, version, cipher, copy_platform_string(&proto[0], proto_len),
+			copy_platform_string(&name[0], name_len), false}
 	}
 	return log.Request{
 		remote_ip: c.ip

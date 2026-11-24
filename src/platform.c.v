@@ -19,10 +19,11 @@ fn C.vaddy_wakeup_pair(&i64) int
 fn C.vaddy_notify(int) int
 fn C.vaddy_stopped() int
 fn C.vaddy_resolve(&char, &char) voidptr
+fn C.vaddy_address_free(voidptr)
 fn C.vaddy_connect(voidptr) int
 fn C.vaddy_connected(int) int
 fn C.vaddy_listen(&char, &char) int
-fn C.vaddy_accept(int, &char, int) int
+fn C.vaddy_accept(int, &char, int, &int) int
 fn C.vaddy_again() int
 fn C.vaddy_lock(&char) int
 fn C.vaddy_queue() int
@@ -52,4 +53,10 @@ fn C.vaddy_upstream_handshake(voidptr) int
 fn C.vaddy_take_reload() int
 
 fn C.vaddy_peer_port(i64) int
-fn C.vaddy_tls_details(voidptr, &int, &int, &int, &char, int, &char, int)
+fn C.vaddy_tls_details(voidptr, &int, &int, &int, &char, int, &int, &char, int, &int)
+
+// The platform adapters supply the length of the terminated text they wrote.
+@[inline]
+fn copy_platform_string(data &char, length int) string {
+	return string{str: &u8(data), len: length}.clone()
+}

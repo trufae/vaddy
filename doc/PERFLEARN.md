@@ -348,11 +348,9 @@ stop counters; those counters change on admission, close, or shutdown rather
 than on every request. This does not imply that the allocator, GC, OpenSSL, or
 kernel contains no shared synchronization.
 
-The connection pointer crosses a channel once when ownership changes. The
-receiver's `unsafe { received }` conversion permits mutable access under this
-ownership convention; it is not synchronization or an automatic proof of
-exclusive access. After publishing a connection, the sender must not continue
-to manipulate it. Worker-visible heap objects must outlive the worker.
+The channel carries one mutable connection reference when ownership changes.
+After publishing a connection, the sender must stop using it. Worker-visible
+heap objects must outlive the worker.
 
 ### Wakeups and admission need explicit invariants
 

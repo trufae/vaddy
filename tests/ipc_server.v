@@ -19,11 +19,11 @@ fn ipc_server() ! {
 	defer { C.vaddy_queue_close(s.queue) }
 	if use_tls {
 		s.ctx = C.vaddy_tls_context(&char(cert.str), &char(key.str))
-		if s.ctx == unsafe { nil } { return error('TLS context failed') }
+		if isnil(s.ctx) { return error('TLS context failed') }
 	}
 	defer {
 		for _, mut c in s.clients.clone() { s.close_client(mut c) }
-		if s.ctx != unsafe { nil } { C.vaddy_tls_ctx_free(s.ctx) }
+		if !isnil(s.ctx) { C.vaddy_tls_ctx_free(s.ctx) }
 	}
 	C.vaddy_signals()
 	defer { s.stop_workers() }
@@ -35,7 +35,7 @@ fn ipc_server() ! {
 		mut c := &Connection{fd: fd, backend: backend, backend_name: 'localhost:8001', ip: '127.0.0.1', started: mono_ms(), last_activity: mono_ms()}
 		if use_tls {
 			c.tls = C.vaddy_tls_new(s.ctx, fd)
-			if c.tls == unsafe { nil } { return error('TLS allocation failed') }
+			if isnil(c.tls) { return error('TLS allocation failed') }
 			c.handshake = true
 		}
 		s.dispatch_client(mut c)

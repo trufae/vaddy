@@ -20,12 +20,12 @@ fn prepare_backends(cfg Config) !map[string]Backend {
 			tls := route.upstream.starts_with('https://')
 			u := urllib.parse(if tls { route.upstream } else { 'http://${route.upstream}' })!
 			address := C.vaddy_resolve(&char(u.hostname().str), &char(u.port().str))
-			if address == unsafe { nil } { return error('cannot resolve upstream ${route.upstream}') }
+			if isnil(address) { return error('cannot resolve upstream ${route.upstream}') }
 			mut ctx := voidptr(0)
 			if tls {
 				ctx = C.vaddy_upstream_context(&char(route.tls_ca.str))
-				if ctx == unsafe { nil } {
-					unsafe { free(address) }
+				if isnil(ctx) {
+					C.vaddy_address_free(address)
 					return error('cannot load upstream trust roots for ${route.upstream}')
 				}
 			}
@@ -38,7 +38,7 @@ fn prepare_backends(cfg Config) !map[string]Backend {
 
 fn free_backends(backends map[string]Backend) {
 	for _, backend in backends {
-		unsafe { free(backend.address) }
-		if backend.ctx != unsafe { nil } { C.vaddy_tls_ctx_free(backend.ctx) }
+		C.vaddy_address_free(backend.address)
+		if !isnil(backend.ctx) { C.vaddy_tls_ctx_free(backend.ctx) }
 	}
 }

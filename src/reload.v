@@ -23,8 +23,8 @@ mut:
 struct RuntimeStore {
 mut:
 	mutex &sync.Mutex = sync.new_mutex()
-	log_mutex &sync.Mutex = sync.new_mutex()
-	current &Runtime = unsafe { nil }
+	log_mutex &sync.Mutex
+	current &Runtime
 }
 
 fn new_config(opts Options) !Config {
@@ -57,6 +57,15 @@ fn prepare_runtime(cfg Config, id i64, log_mutex &sync.Mutex) !&Runtime {
 	return &Runtime{id: id, cfg: cfg, backends: backends, logs: logs}
 }
 
+fn new_runtime_store(cfg Config) !&RuntimeStore {
+	mut log_mutex := sync.new_mutex()
+	current := prepare_runtime(cfg, 1, log_mutex) or {
+		log_mutex.destroy()
+		return err
+	}
+	return &RuntimeStore{current: current, log_mutex: log_mutex}
+}
+
 fn (mut store RuntimeStore) acquire() &Runtime {
 	store.mutex.lock()
 	defer { store.mutex.unlock() }
@@ -66,10 +75,9 @@ fn (mut store RuntimeStore) acquire() &Runtime {
 }
 
 fn release_runtime(mut c Connection) {
-	if c.runtime != unsafe { nil } {
-		stdatomic.sub_i64(&c.runtime.users, 1)
-		c.runtime = unsafe { nil }
-	}
+	mut runtime := c.runtime or { return }
+	stdatomic.sub_i64(&runtime.users, 1)
+	c.runtime = none
 }
 
 fn destroy_runtime(runtime &Runtime) {
@@ -86,10 +94,11 @@ fn (mut s Server) reap_runtimes() {
 }
 
 fn (mut s Server) close_runtimes() {
+	mut store := s.runtime_store or { return }
 	s.reap_runtimes()
-	destroy_runtime(s.runtime_store.current)
-	s.runtime_store.mutex.destroy()
-	s.runtime_store.log_mutex.destroy()
+	destroy_runtime(store.current)
+	store.mutex.destroy()
+	store.log_mutex.destroy()
 }
 
 fn reload_tls_policy(cfg Config) string {
@@ -99,6 +108,7 @@ fn reload_tls_policy(cfg Config) string {
 }
 
 fn (mut s Server) replace_config(input string) ! {
+	mut store := s.runtime_store or { return error('configuration reload is unavailable') }
 	cfg := load_config(input, s.opts)!
 	if cfg.http_port != s.cfg.http_port || cfg.https_port != s.cfg.https_port {
 		return error('listener port changes require a restart')
@@ -108,11 +118,11 @@ fn (mut s Server) replace_config(input string) ! {
 	}
 	// All fallible resource preparation precedes publication. Existing requests
 	// retain their generation until completion, including long-lived streams.
-	candidate := prepare_runtime(cfg, s.runtime_store.current.id + 1, s.runtime_store.log_mutex)!
-	s.runtime_store.mutex.lock()
-	previous := s.runtime_store.current
-	s.runtime_store.current = candidate
-	s.runtime_store.mutex.unlock()
+	candidate := prepare_runtime(cfg, store.current.id + 1, store.log_mutex)!
+	store.mutex.lock()
+	previous := store.current
+	store.current = candidate
+	store.mutex.unlock()
 	s.retired << previous
 	s.cfg = cfg
 	s.backends = candidate.backends.clone()

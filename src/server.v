@@ -35,13 +35,13 @@ mut:
 	h2_streams             map[int]&Connection
 	h2_id                  int
 	h2_parent              voidptr
-	h2_state               &C.vaddy_h2_stream = unsafe { nil }
+	h2_state               &C.vaddy_h2_stream = C.NULL
 	h2_chunked_input       bool
 	h2_input_end           bool
 	h2_headers_sent        bool
 	h2_output_end          bool
 	h2_output_frame        Framing
-	runtime                &Runtime = unsafe { nil }
+	runtime                ?&Runtime
 	backend_generation     i64
 	access_targets         []log.Target
 	log_rules              []LogRule
@@ -96,7 +96,7 @@ mut:
 
 struct Server {
 mut:
-	runtime_store &RuntimeStore = unsafe { nil }
+	runtime_store ?&RuntimeStore
 	retired       []&Runtime
 	run_id        string
 	cfg           Config
@@ -105,7 +105,7 @@ mut:
 	http_fd       int         = -1
 	pool          &WorkerPool = &WorkerPool{}
 	control_fd    int         = -1
-	incoming      chan &Connection
+	incoming      chan IncomingConnection
 	next_worker   int
 	https_fd      int = -1
 	ctx           voidptr
@@ -142,8 +142,8 @@ fn (mut s Server) close_backend(mut c Connection) {
 	s.watch(c.backend, 0) or {}
 	s.watches.delete(c.backend)
 	s.owners.delete(c.backend)
-	if c.backend_tls != unsafe { nil } { C.vaddy_tls_free(c.backend_tls) }
-	c.backend_tls = unsafe { nil }
+	if !isnil(c.backend_tls) { C.vaddy_tls_free(c.backend_tls) }
+	c.backend_tls = voidptr(0)
 	c.backend_handshake = false
 	c.backend_write_len = 0
 	c.backend_stop_write = false
@@ -159,19 +159,19 @@ fn (mut s Server) close_client(mut c Connection) {
 	if c.fd < 0 { return }
 	c.close_file()
 	c.close_encoder()
-	if c.h2 != unsafe { nil } {
+	if !isnil(c.h2) {
 		for id in c.h2_streams.keys() { s.close_h2_stream(mut c, id) }
 		C.vaddy_h2_free(c.h2)
-		c.h2 = unsafe { nil }
+		c.h2 = voidptr(0)
 	}
 	c.log_access()
 	release_runtime(mut c)
 	s.close_backend(mut c)
 	s.watch(c.fd, 0) or {}
 	s.watches.delete(c.fd)
-	if c.tls != unsafe { nil } {
+	if !isnil(c.tls) {
 		C.vaddy_tls_free(c.tls)
-		c.tls = unsafe { nil }
+		c.tls = voidptr(0)
 	}
 	C.vaddy_close(c.fd)
 	s.clients.delete(c.fd)
@@ -238,21 +238,22 @@ fn (mut s Server) accept_clients(listener int, tls bool) {
 			break
 		}
 		mut ip := [128]char{}
-		fd := C.vaddy_accept(listener, &ip[0], ip.len)
+		mut ip_len := 0
+		fd := C.vaddy_accept(listener, &ip[0], ip.len, &ip_len)
 		if fd < 0 {
 			// Exhausted descriptors must not leave a readable listener spinning the reactor.
 			if C.vaddy_again() == 0 { s.pause_accepts() }
 			break
 		}
-		if tls && s.ctx == unsafe { nil } {
+		if tls && isnil(s.ctx) {
 			C.vaddy_close(fd)
 			continue
 		}
 		now := mono_ms()
-		mut c := &Connection{ fd: fd, remote_port: C.vaddy_peer_port(fd).str(), ip: unsafe { cstring_to_vstring(&ip[0]) }, last_activity: now, started: now }
+		mut c := &Connection{ fd: fd, remote_port: C.vaddy_peer_port(fd).str(), ip: copy_platform_string(&ip[0], ip_len), last_activity: now, started: now }
 		if tls {
 			c.tls = C.vaddy_tls_new(s.ctx, fd)
-			if c.tls == unsafe { nil } {
+			if isnil(c.tls) {
 				C.vaddy_close(fd)
 				continue
 			}
@@ -290,19 +291,27 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	c.log_empty_content_type = false
 	c.log_bytes_read = 0
 	c.log_response_fields = []Field{}
-	if s.runtime_store != unsafe { nil } { c.runtime = s.runtime_store.acquire() }
-	cfg := if c.runtime == unsafe { nil } { s.cfg } else { c.runtime.cfg }
-	backends := if c.runtime == unsafe { nil } { s.backends } else { c.runtime.backends }
-	logs := if c.runtime == unsafe { nil } { s.access_logs } else { c.runtime.logs }
+	mut cfg := s.cfg
+	mut backends := s.backends
+	mut logs := s.access_logs
+	mut generation := i64(0)
+	if mut store := s.runtime_store {
+		runtime := store.acquire()
+		c.runtime = runtime
+		cfg = runtime.cfg
+		backends = runtime.backends
+		logs = runtime.logs
+		generation = runtime.id
+	}
 	site_host := m.host_name.trim_right('.').to_lower()
-	c.site = cfg.site_index(site_host, c.tls != unsafe { nil })
+	c.site = cfg.site_index(site_host, !isnil(c.tls))
 	if c.site < 0 {
 		s.respond(mut c, 421, 'Misdirected Request', 'Unknown host\n', '')
 		return false
 	}
 	site := cfg.sites[c.site]
 	c.response_headers = site.response_headers.clone()
-	c.header_values = HeaderValues{ uri: m.uri, method: m.method, fields: m.fields.clone(), host: m.host_name, hostport: m.host, port: m.host_port, scheme: if c.tls == unsafe { nil } {
+	c.header_values = HeaderValues{ uri: m.uri, method: m.method, fields: m.fields.clone(), host: m.host_name, hostport: m.host, port: m.host_port, scheme: if isnil(c.tls) {
 		'http'
 	} else {
 		'https'
@@ -311,7 +320,7 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 	c.log_rules = site.log_rules.clone()
 	c.capture_early_logs(site.log_rules)
 	c.access_targets = access_targets(cfg, site, logs, c.log_rules, c.header_values)
-	if c.tls == unsafe { nil } {
+	if isnil(c.tls) {
 		if m.uri.all_before('?').starts_with('/.well-known/acme-challenge/') && m.method in [
 			'GET',
 			'HEAD',
@@ -375,7 +384,6 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		s.serve_file(mut c, site, route, handler_fields)!
 		return false
 	}
-	generation := if c.runtime == unsafe { nil } { i64(0) } else { c.runtime.id }
 	if c.backend >= 0 && (c.backend_generation != generation || c.backend_name != route.backend_key() || C.vaddy_socket_alive(c.backend) == 0) {
 		s.close_backend(mut c)
 	}
@@ -390,9 +398,9 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		c.started = mono_ms()
 		c.backend_name = route.backend_key()
 		c.backend_generation = generation
-		if backend.ctx != unsafe { nil } {
+		if !isnil(backend.ctx) {
 			c.backend_tls = C.vaddy_upstream_tls(backend.ctx, c.backend, &char(backend.name.str))
-			if c.backend_tls == unsafe { nil } {
+			if isnil(c.backend_tls) {
 				return error('cannot create upstream TLS session')
 			}
 			c.backend_handshake = true
@@ -419,7 +427,7 @@ fn (mut s Server) begin_request(mut c Connection) !bool {
 		upstream_request.host
 	}
 	upstream_request.fields << Field{'Host', 'host', host}
-	field_count := c.to_backend.request_header(upstream_request, rewrite_uri(m.uri, route.rewrite), c.ip, c.tls != unsafe { nil }, '')
+	field_count := c.to_backend.request_header(upstream_request, rewrite_uri(m.uri, route.rewrite), c.ip, !isnil(c.tls), '')
 	if edits.any(it.proxy) {
 		edit_header_buffer(mut c.to_backend, edits.filter(it.proxy), c.header_values)!
 		// Host is represented separately by Go's request type: an append replaces it.
@@ -514,7 +522,7 @@ fn (mut s Server) consume_response(mut c Connection) ! {
 		data := c.response_buffer.bytes()
 		limit := if data.len < c.to_client.room() { data.len } else { c.to_client.room() }
 		n := c.response.frame.consume(data[..limit])!
-		if !c.tunnel && c.output.codec == unsafe { nil } {
+		if !c.tunnel && isnil(c.output.codec) {
 			c.log_size = c.response.frame.body_bytes
 		}
 		c.to_client.add(data[..n])
@@ -582,7 +590,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 			c.last_activity = mono_ms()
 			if C.vaddy_tls_is_h2(c.tls) != 0 {
 				c.h2 = C.vaddy_h2_new(s.opts.max_keepalive_requests)
-				if c.h2 == unsafe { nil } { return error('cannot create HTTP/2 session') }
+				if isnil(c.h2) { return error('cannot create HTTP/2 session') }
 			}
 		} else {
 			err := C.vaddy_tls_error(c.tls, result)
@@ -594,7 +602,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 			return
 		}
 	}
-	if c.h2 != unsafe { nil } {
+	if !isnil(c.h2) {
 		s.pump_h2(mut c, event_fd)!
 		return
 	}
@@ -620,8 +628,8 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 	// Drain each ready input until EAGAIN, then wait for another readiness event.
 	// OpenSSL may have records buffered even when the kernel socket is no longer
 	// readable, so those records must also be allowed to drive the client read.
-	mut client_readable := c.h2_id == 0 && (event_fd == c.fd || (c.tls != unsafe { nil } && C.vaddy_tls_has_pending(c.tls) != 0))
-	mut backend_readable := event_fd == c.backend || (c.backend_tls != unsafe { nil } && C.vaddy_tls_has_pending(c.backend_tls) != 0)
+	mut client_readable := c.h2_id == 0 && (event_fd == c.fd || (!isnil(c.tls) && C.vaddy_tls_has_pending(c.tls) != 0))
+	mut backend_readable := event_fd == c.backend || (!isnil(c.backend_tls) && C.vaddy_tls_has_pending(c.backend_tls) != 0)
 	for _ in 0 .. 8 {
 		mut progress := false
 		body_remaining := c.response.frame.remaining
@@ -635,7 +643,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		if c.h2_id == 0 && c.wire_output.len() > 0 {
 			data := c.wire_output.bytes()
 			mut n := 0
-			if c.tls != unsafe { nil } {
+			if !isnil(c.tls) {
 				if c.write_len == 0 { c.write_len = data.len }
 				n = C.vaddy_tls_write(c.tls, data.data, c.write_len)
 				if n <= 0 {
@@ -666,7 +674,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		if !c.local && c.backend >= 0 && !c.connecting && !c.backend_handshake && !c.backend_stop_write && c.to_backend.len() > 0 {
 			data := c.to_backend.bytes()
 			mut n := 0
-			if c.backend_tls != unsafe { nil } {
+			if !isnil(c.backend_tls) {
 				if c.backend_write_len == 0 { c.backend_write_len = data.len }
 				n = C.vaddy_tls_write(c.backend_tls, data.data, c.backend_write_len)
 				if n <= 0 {
@@ -693,7 +701,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 				scratch.len
 			}
 			mut n := 0
-			if c.backend_tls != unsafe { nil } {
+			if !isnil(c.backend_tls) {
 				n = C.vaddy_tls_read(c.backend_tls, &scratch[0], limit)
 				if n <= 0 {
 					err := C.vaddy_tls_error(c.backend_tls, n)
@@ -727,7 +735,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		can_read := (!c.local || !c.close_after) && (!c.have_request || (!c.request.frame.done && (!c.have_response || c.tunnel || c.local))) && c.request_buffer.room() >= 16384 && c.to_backend.room() >= 16384
 		if client_readable && can_read && !(c.write_len > 0 && c.write_want == 1) {
 			mut n := 0
-			if c.tls != unsafe { nil } {
+			if !isnil(c.tls) {
 				n = C.vaddy_tls_read(c.tls, &scratch[0], scratch.len)
 				if n <= 0 {
 					err := C.vaddy_tls_error(c.tls, n)
@@ -765,7 +773,7 @@ fn (mut s Server) update_interests(mut c Connection) ! {
 		s.close_client(mut c)
 		return
 	}
-	if c.h2 != unsafe { nil } {
+	if !isnil(c.h2) {
 		s.update_h2_interests(mut c)!
 		return
 	}
@@ -828,14 +836,14 @@ fn (mut s Server) reload_certificate() {
 		}
 	}
 	ctx := C.vaddy_tls_context(&char(cert.str), &char(key.str))
-	if ctx == unsafe { nil } {
+	if isnil(ctx) {
 		eprintln('vaddy: cannot load TLS certificate ${cert}')
 		return
 	}
 	old := s.ctx
 	s.ctx = ctx
 	s.cert_stamp = stamp
-	if old != unsafe { nil } { C.vaddy_tls_ctx_free(old) }
+	if !isnil(old) { C.vaddy_tls_ctx_free(old) }
 	eprintln('vaddy: loaded TLS certificate for ${s.cfg.domains().join(', ')}')
 }
 
@@ -845,13 +853,13 @@ fn (mut s Server) tick() {
 	s.last_tick = now
 	if !s.draining {
 		s.reload_certificate()
-		if s.runtime_store != unsafe { nil } && s.control_fd < 0 {
+		if s.runtime_store != none && s.control_fd < 0 {
 			s.check_reload()
 			s.reap_runtimes()
 		}
 	}
 	for _, mut c in s.clients.clone() {
-		if c.h2 != unsafe { nil } {
+		if !isnil(c.h2) {
 			for _, stream in c.h2_streams {
 				if now - stream.last_activity > i64(s.opts.idle_timeout) * 1000 || ((stream.connecting || stream.backend_handshake || !stream.have_response) && now - stream.started > i64(s.opts.header_timeout) * 1000) {
 					C.vaddy_h2_reset(c.h2, stream.h2_id, 8)
@@ -880,10 +888,10 @@ fn run_server(cfg Config, opts Options) ! {
 	mut s := Server{ cfg: cfg, opts: opts, queue: C.vaddy_queue() }
 	if s.queue < 0 { return error('cannot create event queue') }
 	defer { C.vaddy_queue_close(s.queue) }
-	s.runtime_store = &RuntimeStore{}
-	s.runtime_store.current = prepare_runtime(cfg, 1, s.runtime_store.log_mutex)!
-	s.backends = s.runtime_store.current.backends.clone()
-	s.access_logs = s.runtime_store.current.logs.clone()
+	store := new_runtime_store(cfg)!
+	s.runtime_store = store
+	s.backends = store.current.backends.clone()
+	s.access_logs = store.current.logs.clone()
 	defer { s.close_runtimes() }
 	s.run_id = new_reload_id()!
 	atomic_write(os.join_path(opts.data, 'run.id'), s.run_id)!
@@ -906,7 +914,7 @@ fn run_server(cfg Config, opts Options) ! {
 			s.cert_file = os.join_path(opts.data, 'current')
 		}
 		s.reload_certificate()
-		if site.tls_mode == 'manual' && s.ctx == unsafe { nil } {
+		if site.tls_mode == 'manual' && isnil(s.ctx) {
 			C.vaddy_close(s.https_fd)
 			return error('invalid manual TLS certificate/key')
 		}
@@ -919,7 +927,7 @@ fn run_server(cfg Config, opts Options) ! {
 	defer {
 		for _, mut c in s.clients.clone() { s.close_client(mut c) }
 		if s.https_fd >= 0 { C.vaddy_close(s.https_fd) }
-		if s.ctx != unsafe { nil } { C.vaddy_tls_ctx_free(s.ctx) }
+		if !isnil(s.ctx) { C.vaddy_tls_ctx_free(s.ctx) }
 	}
 	defer { s.stop_workers() }
 	s.start_workers()!
@@ -945,7 +953,7 @@ fn (mut s Server) serve_events() ! {
 			}
 			if s.control_fd >= 0 { s.drain_incoming() }
 			for _, mut c in s.clients.clone() {
-				if c.h2 != unsafe { nil } {
+				if !isnil(c.h2) {
 					C.vaddy_h2_drain(c.h2)
 					s.pump_h2(mut c, -1) or { c.dead = true }
 					s.update_interests(mut c) or { s.close_client(mut c) }
@@ -975,7 +983,7 @@ fn (mut s Server) serve_events() ! {
 			owner := s.owners[event.fd] or { continue }
 			mut c := s.clients[owner] or { continue }
 			s.pump(mut c, event.fd) or {
-				if c.h2 != unsafe { nil } || c.have_response || c.write_len > 0 {
+				if !isnil(c.h2) || c.have_response || c.write_len > 0 {
 					c.dead = true
 				} else {
 					s.respond(mut c, 502, 'Bad Gateway', 'Bad Gateway\n', '')

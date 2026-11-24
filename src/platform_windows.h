@@ -139,14 +139,18 @@ static int64_t vaddy_listen(const char *host, const char *port) {
     }
     freeaddrinfo(list); return fd == INVALID_SOCKET ? -1 : (int64_t)fd;
 }
-static int64_t vaddy_accept(int64_t fd, char *ip, int len) {
+static int64_t vaddy_accept(int64_t fd, char *ip, int capacity, int *ip_len) {
     struct sockaddr_storage addr; int size = sizeof addr;
     SOCKET client = accept((SOCKET)fd, (struct sockaddr *)&addr, &size);
     if (client == INVALID_SOCKET) return -1;
-    if (vaddy_nonblock((int64_t)client) || getnameinfo((struct sockaddr *)&addr, size, ip, len, NULL, 0, NI_NUMERICHOST)) {
+    if (vaddy_nonblock((int64_t)client) || getnameinfo((struct sockaddr *)&addr, size, ip, capacity, NULL, 0, NI_NUMERICHOST)) {
         closesocket(client); return -1;
     }
-    if (!strncmp(ip, "::ffff:", 7)) memmove(ip, ip + 7, strlen(ip + 7) + 1);
+    *ip_len = (int)strlen(ip);
+    if (!strncmp(ip, "::ffff:", 7)) {
+        *ip_len -= 7;
+        memmove(ip, ip + 7, (size_t)*ip_len + 1);
+    }
     return (int64_t)client;
 }
 

@@ -98,12 +98,16 @@ static int vaddy_listen(const char *host, const char *port) {
     }
     freeaddrinfo(list); return fd;
 }
-static int vaddy_accept(int fd, char *ip, int len) {
+static int vaddy_accept(int fd, char *ip, int capacity, int *ip_len) {
     struct sockaddr_storage addr; socklen_t size = sizeof addr;
     int client = accept(fd, (struct sockaddr *)&addr, &size);
     if (client < 0) return -1;
-    if (vaddy_nonblock(client) || getnameinfo((struct sockaddr *)&addr, size, ip, len, NULL, 0, NI_NUMERICHOST)) { close(client); return -1; }
-    if (!strncmp(ip, "::ffff:", 7)) memmove(ip, ip + 7, strlen(ip + 7) + 1);
+    if (vaddy_nonblock(client) || getnameinfo((struct sockaddr *)&addr, size, ip, capacity, NULL, 0, NI_NUMERICHOST)) { close(client); return -1; }
+    *ip_len = (int)strlen(ip);
+    if (!strncmp(ip, "::ffff:", 7)) {
+        *ip_len -= 7;
+        memmove(ip, ip + 7, (size_t)*ip_len + 1);
+    }
     return client;
 }
 static int vaddy_again(void) { return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR; }

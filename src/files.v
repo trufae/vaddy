@@ -218,7 +218,7 @@ fn (mut c Connection) pump_file() ! {
 			c.close_file()
 		}
 	}
-	if c.output.codec == unsafe { nil } { c.log_size = c.response.frame.body_bytes }
+	if isnil(c.output.codec) { c.log_size = c.response.frame.body_bytes }
 }
 
 fn (mut s Server) serve_file(mut c Connection, site Site, route Route, request_fields []Field) ! {

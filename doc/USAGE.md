@@ -144,12 +144,12 @@ Vaddy watches for changes but does not renew manual certificates.
 
 ## Resource use
 
-The request path defaults to one event-loop thread, with epoll/kqueue readiness
-notifications and no thread per connection. `--workers N` enables up to 64
-reactors, distributing new connections among them; each connection and its
-buffers stay on one worker. More workers can increase throughput, with extra CPU
-and memory costs: measure your workload before choosing a count. The connection
-limit is global across workers. Certificate work runs on one background thread;
+The request path defaults to four event-loop threads, with epoll/kqueue readiness
+notifications and no thread per connection. `--workers N` selects up to 64
+reactors, capped by the connection limit. Each new connection and its buffers
+stay on the worker assigned to it. More workers can increase throughput, CPU use
+and memory use. The connection limit is global across workers. Certificate work
+runs on one background thread.
 OpenSSL subprocesses are used only for infrequent certificate
 and signing operations, never for proxied traffic. The garbage collector may
 also use helper threads.

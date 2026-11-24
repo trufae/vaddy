@@ -40,7 +40,7 @@ with 10 logical CPUs. Values are medians of three 10-second runs.
 | Sampled peak memory (RSS) | **38.70 MiB** | 67.16 MiB |
 
 ¹ 100% means one fully used CPU core. CPU and memory cover the server process only.
-Vaddy defaults to one event-loop worker; `--workers N` enables more.
+Vaddy defaults to four event-loop workers. Set `--workers N` to choose a count.
 Caddy achieved higher total throughput in this run, using more CPU cores.
 These are local measurements, not minimum hardware requirements or production
 capacity estimates; compression and access logging were disabled.

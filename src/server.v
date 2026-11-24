@@ -15,7 +15,7 @@ mut:
 	data                   string                    @[xdoc: 'Certificate/account storage (default: XDG data/vaddy)']
 	bind                   string = '::'             @[xdoc: 'Listen address (default: ::, dual IPv4/IPv6)']
 	max_connections        int    = 512              @[xdoc: 'Bound active clients (default: 512)']
-	workers                int    = 1                @[xdoc: 'Event-loop workers, 1..64 (default: 1)']
+	workers                int    = 4                @[xdoc: 'Event-loop workers, 1..64 (default: 4)']
 	max_keepalive_requests int    = 1000             @[xdoc: 'Maximum number of keepalive requests to process']
 	idle_timeout           int    = 60               @[xdoc: 'Inactive connection timeout (default: 60)']
 	header_timeout         int    = 15               @[xdoc: 'Header/handshake timeout (default: 15)']

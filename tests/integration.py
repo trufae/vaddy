@@ -60,7 +60,7 @@ def free_port():
 
 def port_only(binary, engine="vaddy"):
     for address_prefix in ("", "http://"):
-        for workers in ((1, 3) if engine == "vaddy" else (1,)):
+        for workers in ((None, 1, 3) if engine == "vaddy" else (None,)):
             port = free_port()
             with tempfile.TemporaryDirectory(prefix=f"{engine}-port-only-") as directory:
                 root = Path(directory)
@@ -68,7 +68,9 @@ def port_only(binary, engine="vaddy"):
                 config.write_text(f'{{\n admin off\n}}\n{address_prefix}:{port} {{\n respond "It works!"\n}}\n')
                 args = [binary, "run", "--config", str(config), "--adapter", "caddyfile"]
                 if engine == "vaddy":
-                    args += ["--bind", "127.0.0.1", "--data", str(root / "data"), "--workers", str(workers)]
+                    args += ["--bind", "127.0.0.1", "--data", str(root / "data")]
+                    if workers is not None:
+                        args += ["--workers", str(workers)]
                 with (root / "server.log").open("w+") as log:
                     proc = subprocess.Popen(args, stdout=log, stderr=log)
                     try:
@@ -101,6 +103,11 @@ def port_only(binary, engine="vaddy"):
                         except subprocess.TimeoutExpired:
                             proc.kill()
                             proc.wait()
+                    if engine == "vaddy":
+                        log.seek(0)
+                        output = log.read()
+                        expected = 4 if workers is None else workers
+                        assert f"vaddy: {expected} event-loop worker(s)," in output, output
     print(f"PASS: {engine} port-only HTTP, arbitrary hosts, no TLS issuance")
 
 

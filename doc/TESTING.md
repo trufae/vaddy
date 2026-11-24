@@ -78,9 +78,10 @@ python3 tests/compare.py --servers vaddy-baseline vaddy caddy \
 ```
 
 The optional `vaddy-baseline` entry uses the same configuration and worker count
-as `vaddy`. Reports include binary sizes/hashes, per-sample timestamps and host
-load averages. Let competing builds/tests finish before measuring: valid HTTP
-responses alone do not make timing results comparable on a saturated host.
+as `vaddy`. The harness defaults to one worker for historical comparisons. Use
+`--vaddy-workers 4` to measure Vaddy's server default. Reports include binary
+sizes and hashes, per-sample timestamps and host load averages. Run benchmarks
+after competing builds and tests have finished so the timing is comparable.
 
 Raddy's generated Caddyfile adds `order header after handle`: its current header
 handler runs eagerly, so the default ordering leaves upstream response headers

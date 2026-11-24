@@ -6,6 +6,8 @@ import sync.stdatomic
 import time
 import x.json2
 
+const read_chunk_size = 16384
+
 struct Options {
 mut:
 	acme_transport         AcmeTransport = acme_http @[ignore]
@@ -98,7 +100,7 @@ struct Server {
 mut:
 	// Reads append only the bytes returned by the socket to a connection buffer.
 	// Each reactor can reuse the same scratch space across all its connections.
-	read_scratch  []u8 = []u8{len: 16384}
+	read_scratch  []u8 = []u8{len: buffer_limit}
 	header_scratch Buffer
 	runtime_store ?&RuntimeStore
 	retired       []&Runtime
@@ -555,8 +557,12 @@ fn (mut s Server) consume_response(mut c Connection) ! {
 		if !c.tunnel && isnil(c.output.codec) {
 			c.log_size = c.response.frame.body_bytes
 		}
-		c.to_client.add(data[..n])
-		c.response_buffer.skip(n)
+		if n == data.len {
+			c.response_buffer.transfer_to(mut c.to_client)
+		} else {
+			c.to_client.add(data[..n])
+			c.response_buffer.skip(n)
+		}
 		if c.response.frame.done && c.response_buffer.len() > 0 {
 			return error('unexpected data after upstream response')
 		}
@@ -723,11 +729,12 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 				progress = true
 			}
 		}
-		if backend_readable && !c.local && c.have_request && c.backend >= 0 && !c.connecting && !c.backend_handshake && !(c.backend_write_len > 0 && c.backend_write_want == 1) && !c.response.frame.done && c.response_buffer.room() > 0 && c.to_client.room() >= 16384 {
-			limit := if c.response_buffer.room() < s.read_scratch.len {
+		if backend_readable && !c.local && c.have_request && c.backend >= 0 && !c.connecting && !c.backend_handshake && !(c.backend_write_len > 0 && c.backend_write_want == 1) && !c.response.frame.done && c.response_buffer.room() > 0 && c.to_client.room() >= read_chunk_size {
+			// Read at most one output window and keep applying backpressure.
+			limit := if c.response_buffer.room() < c.to_client.room() {
 				c.response_buffer.room()
 			} else {
-				s.read_scratch.len
+				c.to_client.room()
 			}
 			mut n := 0
 			if !isnil(c.backend_tls) {
@@ -761,11 +768,11 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		if c.have_request && !c.request.frame.done && c.request_buffer.len() > 0 && c.to_backend.room() > 0 {
 			s.consume_request(mut c)!
 		}
-		can_read := (!c.local || !c.close_after) && (!c.have_request || (!c.request.frame.done && (!c.have_response || c.tunnel || c.local))) && c.request_buffer.room() >= 16384 && c.to_backend.room() >= 16384
+		can_read := (!c.local || !c.close_after) && (!c.have_request || (!c.request.frame.done && (!c.have_response || c.tunnel || c.local))) && c.request_buffer.room() >= read_chunk_size && c.to_backend.room() >= read_chunk_size
 		if client_readable && can_read && !(c.write_len > 0 && c.write_want == 1) {
 			mut n := 0
 			if !isnil(c.tls) {
-				n = C.vaddy_tls_read(c.tls, s.read_scratch.data, s.read_scratch.len)
+				n = C.vaddy_tls_read(c.tls, s.read_scratch.data, read_chunk_size)
 				if n <= 0 {
 					err := C.vaddy_tls_error(c.tls, n)
 					client_readable = false
@@ -778,7 +785,7 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 					c.read_want = 1
 				}
 			} else {
-				n = int(C.vaddy_recv(c.fd, s.read_scratch.data, u64(s.read_scratch.len), 0))
+				n = int(C.vaddy_recv(c.fd, s.read_scratch.data, u64(read_chunk_size), 0))
 				if n < 0 { client_readable = false }
 				if n == 0 || (n < 0 && C.vaddy_again() == 0) {
 					c.dead = true
@@ -811,7 +818,7 @@ fn (mut s Server) update_interests(mut c Connection) ! {
 		flags = c.handshake_want
 	} else {
 		if c.has_output_work() { flags |= c.write_want }
-		if (!c.local || !c.close_after) && (!c.have_request || (!c.request.frame.done && (!c.have_response || c.tunnel || c.local))) && c.request_buffer.room() >= 16384 && c.to_backend.room() >= 16384 {
+		if (!c.local || !c.close_after) && (!c.have_request || (!c.request.frame.done && (!c.have_response || c.tunnel || c.local))) && c.request_buffer.room() >= read_chunk_size && c.to_backend.room() >= read_chunk_size {
 			flags |= c.read_want
 		}
 	}
@@ -828,7 +835,7 @@ fn (mut s Server) update_backend_interests(mut c Connection) ! {
 			back = c.backend_handshake_want
 		} else {
 			if !c.backend_stop_write && c.to_backend.len() > 0 { back |= c.backend_write_want }
-			if c.have_request && !c.response.frame.done && c.response_buffer.room() > 0 && c.to_client.room() >= 16384 {
+			if c.have_request && !c.response.frame.done && c.response_buffer.room() > 0 && c.to_client.room() >= read_chunk_size {
 				back |= c.backend_read_want
 			}
 		}

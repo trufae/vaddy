@@ -1,5 +1,20 @@
 module main
 
+fn test_buffer_reads_keep_storage_for_compaction_and_reuse() {
+	mut b := Buffer{}
+	b.write_string('prefix-body')
+	storage := b.data.data
+	b.skip(7)
+	assert b.bytes().bytestr() == 'body'
+	b.write_string('-more')
+	assert b.data.data == storage
+	assert b.bytes().bytestr() == 'body-more'
+	b.skip(b.len())
+	b.write_string('next')
+	assert b.data.data == storage
+	assert b.bytes().bytestr() == 'next'
+}
+
 fn test_output_transfer_preserves_pending_bytes_and_independent_storage() {
 	mut source := Buffer{}
 	mut target := Buffer{}

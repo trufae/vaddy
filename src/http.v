@@ -397,7 +397,14 @@ fn (b &Buffer) len() int { return b.data.len - b.pos }
 
 fn (b &Buffer) room() int { return buffer_limit - b.len() }
 
-fn (b &Buffer) bytes() []u8 { return b.data[b.pos..] }
+// Borrow bytes for a synchronous read. Callers must discard the view before
+// changing the buffer. A V slice would mark the backing array as shared and
+// cause clear and compaction to discard or copy it on every I/O cycle.
+@[inline]
+fn (b &Buffer) bytes() []u8 {
+	if b.pos == 0 { return unsafe { b.data.data.vbytes(b.data.len) } }
+	return unsafe { (&u8(b.data.data) + b.pos).vbytes(b.len()) }
+}
 
 fn (mut b Buffer) clear() {
 	b.data.clear()

@@ -236,31 +236,38 @@ fn expand_placeholders(value string, values HeaderValues) !string {
 }
 
 fn expand_placeholders_limited(value string, values HeaderValues, limit int) !string {
-	if !value.contains('{') {
-		if value.len > limit { return error('expanded value exceeds ${limit} bytes') }
-		return value
-	}
+	opening := value.index_u8(`{`)
+	prefix_len := if opening < 0 { value.len } else { opening }
+	if prefix_len > limit { return error('expanded value exceeds ${limit} bytes') }
+	if opening < 0 { return value }
 	// Single pass: request values are never reinterpreted as placeholders.
-	mut output := strings.new_builder(0)
-	defer { unsafe { output.free() } }
-	mut start := 0
+	// A mostly literal template can reserve space from its source length.
+	capacity := if prefix_len >= value.len - prefix_len {
+		if value.len < limit { value.len + 1 } else { limit + 1 }
+	} else {
+		0
+	}
+	mut output := strings.new_builder(capacity)
+	if prefix_len > 0 { output.write_string(value[..prefix_len]) }
+	mut start := opening
 	for start < value.len {
-		mut part := ''
+		mut end := value.len
 		if value[start] != `{` {
-			end := value.index_after('{', start) or { value.len }
-			part = value[start..end]
-			start = end
+			end = value.index_after('{', start) or { value.len }
 		} else {
-			if end := value.index_after('}', start) {
-				part = placeholder_value(value[start + 1..end], values) or { value[start..end + 1] }
-				start = end + 1
-			} else {
-				part = value[start..]
-				start = value.len
+			if closing := value.index_after('}', start) {
+				end = closing + 1
+				if part := placeholder_value(value[start + 1..closing], values) {
+					if part.len > limit - output.len { return error('expanded value exceeds ${limit} bytes') }
+					output.write_string(part)
+					start = end
+					continue
+				}
 			}
 		}
-		if part.len > limit - output.len { return error('expanded value exceeds ${limit} bytes') }
-		output.write_string(part)
+		if end - start > limit - output.len { return error('expanded value exceeds ${limit} bytes') }
+		output.write_string(value[start..end])
+		start = end
 	}
 	return output.str()
 }

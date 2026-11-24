@@ -379,22 +379,29 @@ fn (mut b Buffer) clear() {
 	b.pos = 0
 }
 
-fn (mut b Buffer) add(data []u8) {
+@[inline]
+fn (mut b Buffer) compact() {
 	if b.pos > 0 {
 		b.data.delete_many(0, b.pos)
 		b.pos = 0
 	}
+}
+
+fn (mut b Buffer) add(data []u8) {
+	b.compact()
 	b.data << data
 }
 
 // Build headers directly into the reusable output queue, avoiding a temporary
 // builder, string and byte-array copy for every request and response.
 fn (mut b Buffer) write_string(s string) {
-	if b.pos > 0 {
-		b.data.delete_many(0, b.pos)
-		b.pos = 0
-	}
+	b.compact()
 	b.data.write_string(s)
+}
+
+fn (mut b Buffer) write_string_range(s string, start int, end int) {
+	b.compact()
+	b.data.write_string(s[start..end])
 }
 
 fn (mut b Buffer) skip(n int) {

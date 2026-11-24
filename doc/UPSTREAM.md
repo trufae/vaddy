@@ -293,10 +293,8 @@ push for it — ordering/case semantics are ours by design.
 `[]u8` and `vmemcpy`s). So every "does this string contain only token chars"
 one-liner costs an allocation. We index the string directly instead.
 
-**Upstream fix**: make `string.bytes()` a borrowed view (`unsafe { s.str.vbytes(s.len) }`
-under the hood) or add `string.byte_at(i)`. Then these helpers collapse into
-one-liners. **Highest-leverage language change on this list** — it silently
-taxes every V program that validates text. P0.
+**Upstream fix** could expose a read-only byte view or add `string.byte_at(i)`.
+Either would let validation helpers scan the bytes without allocating. P0.
 
 ### 3.5 `log.parse_duration` — `src/log/writer.v` — **resolved**
 `log.parse_duration` uses `time.parse_duration` from vlib. It only converts Caddy's

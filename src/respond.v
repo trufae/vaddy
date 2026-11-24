@@ -15,8 +15,7 @@ fn (mut c Connection) pump_local_body() {
 	size := if remaining < c.to_client.room() { remaining } else { c.to_client.room() }
 	if size <= 0 { return }
 	start := c.local_body.len - remaining
-	// write_string copies this borrowed range before local_body can be released.
-	c.to_client.write_string(c.local_body.substr_unsafe(start, start + size))
+	c.to_client.write_string_range(c.local_body, start, start + size)
 	c.response.frame.remaining -= size
 	if c.response.frame.remaining == 0 {
 		c.local_body = ''

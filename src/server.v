@@ -802,6 +802,12 @@ fn (mut s Server) pump(mut c Connection, event_fd int) ! {
 		if !progress { break }
 		c.last_activity = mono_ms()
 	}
+	// Keep record storage across writes during a response. At idle, OpenSSL
+	// can free it if neither direction has TLS records still pending.
+	if c.h2_id == 0 && !isnil(c.tls) && (!c.have_request || c.tunnel)
+		&& c.request_buffer.len() == 0 && c.to_client.len() == 0 && c.wire_output.len() == 0 {
+		C.vaddy_tls_free_buffers(c.tls)
+	}
 }
 
 fn (mut s Server) update_interests(mut c Connection) ! {

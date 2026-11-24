@@ -63,10 +63,11 @@ static int vaddy_cert_host(const char *path, const char *host) {
 }
 static int vaddy_alpn_select(SSL *ssl, const unsigned char **out, unsigned char *outlen,
                              const unsigned char *in, unsigned int inlen, void *arg) {
-    (void)ssl; (void)arg;
+    (void)arg;
     static const unsigned char protocols[] = {2, 'h', '2', 8, 'h','t','t','p','/','1','.','1'};
     if (SSL_select_next_proto((unsigned char **)out, outlen, protocols, sizeof protocols, in, inlen)
         != OPENSSL_NPN_NEGOTIATED) return SSL_TLSEXT_ERR_ALERT_FATAL;
+    if (*outlen == 2 && !memcmp(*out, "h2", 2)) SSL_set_mode(ssl, SSL_MODE_RELEASE_BUFFERS);
     return SSL_TLSEXT_ERR_OK;
 }
 static int vaddy_tls_is_h2(void *ssl) {
@@ -79,7 +80,8 @@ static void *vaddy_tls_context(const char *cert, const char *key) {
     if (!ctx) return NULL;
     SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
     SSL_CTX_set_options(ctx, SSL_OP_NO_COMPRESSION | SSL_OP_NO_RENEGOTIATION);
-    SSL_CTX_set_mode(ctx, SSL_MODE_RELEASE_BUFFERS | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+    /* HTTP/1 releases record buffers when its reactor returns the socket to idle. */
+    SSL_CTX_set_mode(ctx, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_SERVER);
     SSL_CTX_sess_set_cache_size(ctx, 1024);
     SSL_CTX_set_alpn_select_cb(ctx, vaddy_alpn_select, NULL);
@@ -121,6 +123,7 @@ static void *vaddy_upstream_tls(void *ctx, int64_t fd, const char *name) {
 static int vaddy_upstream_handshake(void *ssl) { ERR_clear_error(); return SSL_connect(ssl); }
 static int vaddy_tls_read(void *ssl, void *buf, int len) { ERR_clear_error(); return SSL_read(ssl, buf, len); }
 static int vaddy_tls_write(void *ssl, const void *buf, int len) { ERR_clear_error(); return SSL_write(ssl, buf, len); }
+static void vaddy_tls_free_buffers(void *ssl) { SSL_free_buffers(ssl); }
 static int vaddy_tls_handshake(void *ssl) { ERR_clear_error(); return SSL_accept(ssl); }
 static int vaddy_tls_error(void *ssl, int result) { return SSL_get_error(ssl, result); }
 static int vaddy_tls_pending(void *ssl) { return SSL_pending(ssl); }

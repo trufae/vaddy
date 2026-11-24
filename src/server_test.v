@@ -258,6 +258,14 @@ fn test_internal_tls_issuance_handshake_and_reload() ! {
 	assert sent == body_len
 	assert received.bytestr() == header + 'z'.repeat(body_len)
 	assert !h.c.dead
+	assert C.vaddy_tls_write(client_tls, request.str, request.len) == request.len
+	h.pump()!
+	assert receive(h.upstream).starts_with('GET /secure ')
+	send_text(h.upstream, 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok')
+	h.pump()!
+	after := C.vaddy_tls_read(client_tls, &buffer[0], buffer.len)
+	assert after > 0
+	assert buffer[..after].bytestr().ends_with('\r\n\r\nok')
 }
 
 fn test_redirect_http01_and_unknown_host() ! {

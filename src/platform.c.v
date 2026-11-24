@@ -33,6 +33,7 @@ fn C.vaddy_tls_context(&char, &char) voidptr
 fn C.vaddy_tls_new(voidptr, int) voidptr
 fn C.vaddy_tls_read(voidptr, voidptr, int) int
 fn C.vaddy_tls_write(voidptr, voidptr, int) int
+fn C.vaddy_tls_free_buffers(voidptr)
 fn C.vaddy_tls_handshake(voidptr) int
 fn C.vaddy_tls_error(voidptr, int) int
 fn C.vaddy_tls_pending(voidptr) int
